@@ -1,0 +1,25 @@
+# Vercel ignore configuration
+.git
+.gitignore
+.vercel
+node_modules
+*.py
+*.pyc
+*.db
+*.pt
+*.log
+*.ps1
+requirements.txt
+fetch_mumbai_history.py
+forge_transport_matrix.py
+init_mumbai_vault.py
+time-hash_audit_test.py
+HUFP_mumbai/data/
+HUFP_mumbai/models/
+HUFP_mumbai/src/
+HUFP_mumbai/api/
+HUFP_mumbai/deployment/
+HUFP_mumbai/aegis_auditor/
+HUFP_mumbai/iot/
+HUFP_mumbai/field_survey_ops/
+package-lock.json

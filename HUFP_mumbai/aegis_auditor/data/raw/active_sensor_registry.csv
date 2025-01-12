@@ -1,0 +1,6 @@
+sensor_id,latitude,longitude,ward,sensor_type,installation_zone
+IMD_AWS_SANTACRUZ,19.0856,72.8464,H/E,TB3_Tipping_Bucket_Rain_Gauge,IMD_Primary_Observatory
+IMD_AWS_COLABA,18.9067,72.8147,A,TB3_Tipping_Bucket_Rain_Gauge,IMD_Coastal_Observatory
+BMC_AWS_HINDMATA,19.0153,72.8402,F/S,TB3_Tipping_Bucket_Rain_Gauge,Topographical_Depression
+BMC_LVL_MITHI_KURLA,19.0660,72.8710,L,Ultrasonic_Water_Level,Mithi_River_Estuary_Chokepoint
+BMC_AWS_BKC,19.0658,72.8643,H/E,TB3_Tipping_Bucket_Rain_Gauge,Commercial_Concrete_Zone

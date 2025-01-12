@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sentinel_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  web_backend:
+    build:
+      context: ..
+      dockerfile: ./deployment/Dockerfile
+    container_name: sentinel_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - VAULT_ADDR=http://vault:8200
+      - SENTINEL_REDIS_OPTIONAL=false
+    depends_on:
+      - redis
+    restart: always
+
+  telemetry_daemon:
+    build:
+      context: ..
+      dockerfile: ./deployment/Dockerfile
+    container_name: sentinel_telemetry_daemon
+    command: python 08_live_telemetry_daemon.py
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    restart: always

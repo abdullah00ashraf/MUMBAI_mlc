@@ -1,0 +1,2821 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- API + HMAC: match server env V7_SECURITY_SECRET / SENTINEL_CORS_ORIGINS; empty meta skips swarm HMAC (403). -->
+    <meta name="sentinel-api-base" content="http://127.0.0.1:8000">
+    <script>
+        window.SENTINEL_API_BASE = (function () {
+            var m = document.querySelector('meta[name="sentinel-api-base"]');
+            return ((m && m.content) ? m.content : 'http://127.0.0.1:8000').replace(/\/$/, '');
+        })();
+    </script>
+    <title>SENTINEL HUFP V7 | Mumbai Command</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <style>
+        /* ── Sentinel IDW grid popup — strips default Leaflet white wrapper ── */
+        .sentinel-grid-popup .leaflet-popup-content-wrapper {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            border-radius: 8px !important;
+        }
+        .sentinel-grid-popup .leaflet-popup-content {
+            margin: 0 !important;
+            width: auto !important;
+        }
+        .sentinel-grid-popup .leaflet-popup-tip-container { display: none !important; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const ua = navigator.userAgent;
+            const docEl = document.documentElement;
+            if (/Android/i.test(ua)) docEl.classList.add('device-android');
+            else if (/iPhone|iPad|iPod/i.test(ua)) docEl.classList.add('device-ios');
+            else if (/Windows/i.test(ua)) docEl.classList.add('device-windows');
+            else if (/Mac/i.test(ua)) docEl.classList.add('device-macos');
+            else docEl.classList.add('device-other');
+        });
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: {
+                        deep: '#020202', surface: 'rgba(10, 10, 12, 0.6)',
+                        brand: '#ff2a2a', accent: '#00e5ff',
+                        t_nominal: '#00ffaa', t_elevated: '#ffee00', t_moderate: '#ff9900', t_high: '#ff2a2a', t_critical: '#b000ff'
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'marquee': 'marquee 50s linear infinite',
+                        'glow-pulse': 'glow-pulse 3s infinite alternate',
+                        'float': 'float 6s ease-in-out infinite'
+                    },
+                    keyframes: {
+                        'marquee': { '0%': { transform: 'translateX(100vw)' }, '100%': { transform: 'translateX(-100%)' } },
+                        'glow-pulse': { '0%': { boxShadow: '0 0 5px rgba(0,229,255,0.2)' }, '100%': { boxShadow: '0 0 20px rgba(0,229,255,0.6)' } },
+                        'float': { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --track-bg: rgba(255, 255, 255, 0.05);
+            --track-fill: #00e5ff;
+            --lg-bg-color: rgba(10, 10, 10, 0.6); /* Deeper Mumbai Night vibe */
+            --lg-highlight: rgba(0, 87, 255, 0.4); /* Sentinel Blue highlight */
+            --lg-text: #ffffff;
+            --sentinel-neon: #0057ff;
+        }
+
+        .glass-container {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .glass-filter {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            backdrop-filter: blur(12px);
+            filter: url(#lg-dist);
+            isolation: isolate;
+        }
+
+        .glass-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: linear-gradient(135deg, var(--lg-bg-color), rgba(0,0,0,0.8));
+        }
+
+        .glass-specular {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            border-radius: inherit;
+            pointer-events: none;
+            box-shadow: 
+                inset 1px 1px 0px rgba(255,255,255,0.1),
+                inset 0 0 15px var(--lg-highlight);
+        }
+
+        .glass-content {
+            position: relative;
+            z-index: 3;
+            padding: 1.5rem;
+        }
+
+        body {
+            background-color: #020202;
+            color: #ffffff;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        html.device-ios body {
+            overscroll-behavior-y: none;
+        }
+
+        .leaflet-popup-content {
+            margin: 0 !important;
+            width: 280px !important;
+        }
+
+        .leaflet-popup-content-wrapper {
+            padding: 0 !important;
+            border-radius: 12px !important;
+            background: rgba(5, 5, 8, 0.95) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(0, 229, 255, 0.05) !important;
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+        }
+
+        .leaflet-popup-tip {
+            background: rgba(5, 5, 8, 0.95) !important;
+            border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+            border-right: 1px solid rgba(0, 229, 255, 0.2);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 229, 255, 0.5);
+        }
+
+        .glass-panel {
+            background: rgba(15, 15, 20, 0.7);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 4px;
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+        }
+
+        button,
+        .btn {
+            transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform;
+        }
+
+        button:hover,
+        .btn:hover {
+            transform: translateY(-1px);
+            text-shadow: 0 0 8px currentColor;
+        }
+
+        button:active,
+        .btn:active {
+            transform: translateY(1px) scale(0.98);
+        }
+
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            opacity: 1;
+        }
+
+        #nasa-bg {
+            position: fixed;
+            inset: 0;
+            z-index: -3;
+            background-size: cover !important;
+            background-position: center center !important;
+            background-repeat: no-repeat !important;
+            opacity: 0;
+            transition: opacity 2.5s ease-in-out;
+        }
+
+        #boot-screen {
+            position: fixed;
+            inset: 0;
+            background: #020202;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 2rem;
+            transition: opacity 0.8s ease;
+        }
+
+        .data-bar {
+            position: relative;
+            overflow: hidden;
+            border-radius: 4px;
+        }
+
+        .data-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transform: translateX(-100%);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .leaflet-container {
+            background: transparent;
+            font-family: 'JetBrains Mono', monospace;
+            z-index: 0;
+        }
+
+        .leaflet-control-layers {
+            background: rgba(5, 5, 8, 0.9) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+            color: #fff !important;
+            border-radius: 8px !important;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        }
+
+        .leaflet-bar a {
+            background-color: rgba(5, 5, 8, 0.9) !important;
+            color: #fff !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+            transition: all 0.2s;
+        }
+
+        .leaflet-bar a:hover {
+            background-color: rgba(0, 229, 255, 0.1) !important;
+            color: #00e5ff !important;
+        }
+
+        #dashboard-core {
+            transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), filter 0.6s;
+            will-change: transform, opacity, filter;
+        }
+
+        /* Stop Motion Logo (Cyan version for Mumbai) */
+        .stop-motion-logo {
+            width: 36px;
+            height: 36px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            animation: logo-cycle 0.8s steps(1) infinite;
+            filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.6));
+        }
+
+        @keyframes logo-cycle {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        /* 3D FLIP CARDS */
+        .flip-card {
+            perspective: 1500px;
+            background: transparent;
+            min-height: 140px;
+            height: 100%;
+            z-index: 1;
+            transition: z-index 0.1s step-start;
+        }
+
+        .flip-card:hover {
+            z-index: 50;
+        }
+
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .flip-card.flip-left:hover .flip-card-inner {
+            transform: rotateY(-180deg) scale(1.02);
+        }
+
+        .flip-card.flip-right:hover .flip-card-inner {
+            transform: rotateY(180deg) scale(1.02);
+        }
+
+        .flip-card.flip-bottom:hover .flip-card-inner {
+            transform: rotateX(-180deg) scale(1.02);
+        }
+
+        .flip-card.flip-top:hover .flip-card-inner {
+            transform: rotateX(180deg) scale(1.02);
+        }
+
+        .flip-card-front,
+        .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .flip-card.flip-left .flip-card-back {
+            transform: rotateY(-180deg);
+        }
+
+        .flip-card.flip-right .flip-card-back {
+            transform: rotateY(180deg);
+        }
+
+        .flip-card.flip-bottom .flip-card-back {
+            transform: rotateX(-180deg);
+        }
+
+        .flip-card.flip-top .flip-card-back {
+            transform: rotateX(180deg);
+        }
+
+        @keyframes eq {
+
+            0%,
+            100% {
+                height: 10%;
+            }
+
+            50% {
+                height: 100%;
+                box-shadow: 0 0 10px currentColor;
+            }
+        }
+
+        .eq-bar {
+            animation: eq 1s infinite ease-in-out;
+        }
+
+        /* Sliders */
+        .tech-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 2px;
+            border-radius: 1px;
+            outline: none;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tech-slider::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: transparent;
+        }
+
+        .tech-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--track-fill);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.8), 0 0 5px #fff;
+            border: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: -5px;
+        }
+
+        .tech-slider:hover::-webkit-slider-thumb {
+            transform: scale(1.3);
+        }
+
+        /* STAR Emit */
+        @keyframes starWavePulse {
+            0% {
+                transform: scale(0.9);
+                opacity: 0;
+                box-shadow: inset 0 0 0 rgba(0, 229, 255, 0);
+            }
+
+            50% {
+                transform: scale(1);
+                opacity: 1;
+                box-shadow: inset 0 0 30px rgba(0, 229, 255, 0.8), 0 0 20px rgba(0, 229, 255, 0.4);
+            }
+
+            100% {
+                transform: scale(1.1);
+                opacity: 0;
+                box-shadow: inset 0 0 0 rgba(0, 229, 255, 0);
+            }
+        }
+
+        .star-emitting {
+            animation: starWavePulse 1.2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+        }
+
+        .terminal-line {
+            animation: slideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        @keyframes slideIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .typing-cursor::after {
+            content: '█';
+            animation: blink 1s step-end infinite;
+            color: #00e5ff;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* Glow Text */
+        .text-glow {
+            text-shadow: 0 0 15px currentColor;
+        }
+
+        .border-glow {
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.3);
+            border-color: rgba(0, 229, 255, 0.5);
+        }
+
+        /* [AGENT TASK 2] ADMIN RESOURCE MATRIX CSS */
+        #resource-matrix-section {
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .matrix-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s;
+        }
+
+        .matrix-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(0, 229, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
+    </style>
+</head>
+
+<body class="antialiased selection:bg-accent selection:text-black">
+
+    <div id="boot-screen" class="font-mono text-xs sm:text-sm text-accent">
+        <div id="boot-text" class="max-w-2xl mx-auto w-full"></div>
+    </div>
+
+    <!-- NASA APOD: Single full-cover img (object-fit avoids any tiling) -->
+    <img id="nasa-bg" src="" alt=""
+        style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:-3;opacity:0;transition:opacity 2.5s ease-in-out;pointer-events:none;" />
+    <div class="fixed inset-0 z-[-2] pointer-events-none"
+        style="background:linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.75) 100%);">
+    </div>
+
+    <!-- HTML5 Radar Sweep Background / 3D WebGL -->
+    <canvas id="bg-canvas" class="grid-line"></canvas>
+
+    <div id="dashboard-core">
+
+        <nav class="fixed top-0 w-full z-50 transition-all duration-300 border-b border-transparent" id="navbar">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-4">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-3">
+                        <div class="stop-motion-logo"></div>
+                        <span class="font-bold tracking-[0.2em] text-lg">SENTINEL<span
+                                class="text-accent text-sm ml-2 hidden sm:inline">V7</span></span>
+                    </div>
+                </div>
+                <div class="hidden lg:flex gap-8 text-xs font-semibold tracking-widest text-gray-400">
+                    <a href="#overview" class="hover:text-white transition-colors">OVERVIEW</a>
+                    <a href="#intelligence" class="hover:text-white transition-colors">NEURAL ENGINE</a>
+                    <a href="#threats" class="hover:text-white transition-colors">RISK MATRIX</a>
+                    <a href="#map-view" class="hover:text-white transition-colors">CITY PROJECTION</a>
+                    <a href="#time-series" class="hover:text-white transition-colors">TIME-SERIES</a>
+                    <a href="#map-view" onclick="toggleRailways()"
+                        class="hover:text-white transition-colors text-blue-400">RAIL RISK</a>
+                    <a href="#live-prediction" class="hover:text-white transition-colors text-purple-400">LIVE MAP</a>
+                </div>
+                <div
+                    class="flex items-center gap-2 text-xs font-mono text-accent bg-accent/10 px-3 py-1 rounded-full border border-accent/20 w-full sm:w-auto justify-center">
+                    <div class="w-2 h-2 rounded-full bg-accent animate-pulse-slow" id="status-indicator"></div>
+                    <span id="status-text">SYSTEM ONLINE</span>
+                </div>
+            </div>
+        </nav>
+
+        <section id="overview"
+            class="relative min-h-[100dvh] flex flex-col justify-between items-center px-4 sm:px-6 pt-24 pb-8 lg:pt-28 lg:pb-12">
+            <!-- SpaceX Cinematic Anchoring Gradient -->
+            <div
+                class="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0">
+            </div>
+
+            <div class="z-10 text-center my-auto w-full">
+                <h1 class="text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter mb-4 leading-none">
+                    MUMBAI <br class="sm:hidden"> <span
+                        class="text-transparent bg-clip-text bg-gradient-to-r from-accent to-blue-500">COMMAND</span>
+                </h1>
+                <p
+                    class="text-xs sm:text-sm md:text-xl text-gray-400 tracking-[0.3em] font-light max-w-3xl mx-auto mb-8 lg:mb-12">
+                    COASTAL HUFP NEURAL EXPERT SYSTEM
+                </p>
+
+                <div
+                    class="flex flex-col sm:flex-row justify-center gap-4 lg:gap-6 mt-8 w-full sm:w-auto px-4 sm:px-0 relative z-20">
+                    <a href="#map-view"
+                        class="bg-transparent border-2 border-white text-white hover:bg-white hover:text-black px-8 py-3 text-xs font-bold tracking-[0.2em] transition-all duration-300 text-center w-full sm:w-auto rounded-sm uppercase">
+                        VIEW TACTICAL MAP
+                    </a>
+                    <a href="expert.html"
+                        class="bg-white border-2 border-white text-black hover:bg-gray-200 hover:border-gray-200 px-8 py-3 text-xs font-bold tracking-[0.2em] transition-all duration-300 text-center w-full sm:w-auto rounded-sm uppercase">
+                        <i data-lucide="cpu" class="w-4 h-4 inline-block mr-2 align-middle -mt-1"></i> EXPERT MODE
+                    </a>
+                    <button onclick="fetchTelemetry()"
+                        class="bg-transparent border-2 border-white/30 text-white/70 hover:border-white hover:text-white px-8 py-3 text-xs font-bold tracking-[0.2em] transition-all duration-300 flex items-center justify-center gap-2 w-full sm:w-auto rounded-sm uppercase">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> SYNC WITH BACKEND
+                    </button>
+                </div>
+            </div>
+
+            <div class="w-full px-4 sm:px-6 z-10 mt-12 lg:mt-0 lg:mb-4">
+                <div class="max-w-7xl mx-auto glass-container">
+                    <div class="glass-filter"></div>
+                    <div class="glass-overlay"></div>
+                    <div class="glass-specular"></div>
+                    <div class="glass-content !p-0">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-4">
+
+                            <!-- CARD 1: HYDRAULIC LOCK PROBABILITY -->
+                            <div class="flip-card flip-left w-full h-[180px] hover:z-50 font-mono">
+                                <div class="flip-card-inner">
+                                    <!-- FRONT -->
+                                    <div class="flip-card-front showcase-glass-panel border border-white/5 rounded-lg p-5 flex flex-col justify-between bg-[#0a0a0c]/80 backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-gray-500 tracking-widest mb-1 uppercase font-mono">Hydraulic Lock Probability</div>
+                                            <div class="text-4xl font-light font-sans mb-1"><span id="stat-hl" class="text-red-500">0</span><span class="text-lg text-gray-500">%</span></div>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Model Version:</span><span class="text-white">Bi-LSTM v7.2</span></div>
+                                            <div class="flex justify-between"><span>Confidence:</span><span class="text-accent">94.2%</span></div>
+                                            <div class="flex justify-between"><span>Outfall Intersection:</span><span class="text-white">Active</span></div>
+                                        </div>
+                                    </div>
+                                    <!-- BACK -->
+                                    <div class="flip-card-back showcase-glass-panel border border-accent/30 rounded-lg p-5 flex flex-col justify-between bg-[#050508] backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-accent tracking-widest mb-1 uppercase font-mono">[ NEURAL KERNEL ]</div>
+                                            <p class="text-[8px] text-gray-500 uppercase tracking-widest font-black">BI-LSTM HUFP BACKEND SERVICE</p>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Hydrology Sync:</span><span class="text-green-400">SYNCHRONIZED</span></div>
+                                            <div class="flex justify-between"><span>XAI Activation:</span><span class="text-amber-400">1.082 ALPHA</span></div>
+                                            <div class="flex justify-between"><span>Prediction Window:</span><span class="text-white">T + 45 Minutes</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CARD 2: CURRENT HIGH TIDE -->
+                            <div class="flip-card flip-bottom w-full h-[180px] hover:z-50 font-mono">
+                                <div class="flip-card-inner">
+                                    <!-- FRONT -->
+                                    <div class="flip-card-front showcase-glass-panel border border-white/5 rounded-lg p-5 flex flex-col justify-between bg-[#0a0a0c]/80 backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-gray-500 tracking-widest mb-1 uppercase font-mono">Current High Tide</div>
+                                            <div class="text-4xl font-light font-sans text-accent mb-1"><span id="stat-tide">0</span><span class="text-lg text-gray-500"> m</span></div>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Gauge Node:</span><span class="text-white">Apollo Bunder</span></div>
+                                            <div class="flex justify-between"><span>Wind Shear:</span><span class="text-white" id="stat-wind">--</span></div>
+                                            <div class="flex justify-between"><span>Water Level:</span><span class="text-brand">Critical > 4.5m</span></div>
+                                        </div>
+                                    </div>
+                                    <!-- BACK -->
+                                    <div class="flip-card-back showcase-glass-panel border border-accent/30 rounded-lg p-5 flex flex-col justify-between bg-[#050508] backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-accent tracking-widest mb-1 uppercase font-mono">[ TIDAL HARMONICS ]</div>
+                                            <p class="text-[8px] text-gray-500 uppercase tracking-widest font-black">ASTRONOMICAL & SURGE MATRIX</p>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Colaba Jetty:</span><span class="text-white">3.92 m</span></div>
+                                            <div class="flex justify-between"><span>Surge Vector:</span><span class="text-accent">+0.41m (Spring)</span></div>
+                                            <div class="flex justify-between"><span>Harmonic Phase:</span><span class="text-white">Waning Gibbous</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CARD 3: MASTER VAULT RECORDS -->
+                            <div class="flip-card flip-right w-full h-[180px] hover:z-50 font-mono">
+                                <div class="flip-card-inner">
+                                    <!-- FRONT -->
+                                    <div class="flip-card-front showcase-glass-panel border border-white/5 rounded-lg p-5 flex flex-col justify-between bg-[#0a0a0c]/80 backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-gray-500 tracking-widest mb-1 uppercase font-mono">Master Vault Records</div>
+                                            <div class="text-4xl font-light font-sans mb-1"><span id="stat-vault-records">83.9M</span></div>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Active Shards:</span><span class="text-white">14/14 Online</span></div>
+                                            <div class="flex justify-between"><span>Query Latency:</span><span class="text-white">12ms</span></div>
+                                            <div class="flex justify-between"><span>AES-256 Auth:</span><span class="text-green-400">SECURE</span></div>
+                                        </div>
+                                    </div>
+                                    <!-- BACK -->
+                                    <div class="flip-card-back showcase-glass-panel border border-accent/30 rounded-lg p-5 flex flex-col justify-between bg-[#050508] backdrop-blur-md">
+                                        <div class="flex flex-col items-start w-full">
+                                            <div class="text-[10px] text-accent tracking-widest mb-1 uppercase font-mono">[ CRYPTO VAULT ]</div>
+                                            <p class="text-[8px] text-gray-500 uppercase tracking-widest font-black">LEDGER INTEGRITY SHIELD</p>
+                                        </div>
+                                        <div class="w-full space-y-1.5 border-t border-white/10 pt-3 text-[9px] font-mono text-gray-400">
+                                            <div class="flex justify-between"><span>Ledger Block:</span><span class="text-white">0x7F2A...9B3C</span></div>
+                                            <div class="flex justify-between"><span>HMAC Verification:</span><span class="text-green-400">SHA-256 PASS</span></div>
+                                            <div class="flex justify-between"><span>Session Cipher:</span><span class="text-accent">AES-256-GCM</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hidden lg:block absolute bottom-4 left-1/2 transform -translate-x-1/2 animate-bounce">
+                <i data-lucide="chevron-down" class="text-gray-500 w-6 h-6"></i>
+            </div>
+        </section>
+
+        <section id="intelligence" class="py-20 lg:py-32 px-4 sm:px-6 bg-gradient-to-b from-transparent to-[#0a0a0c]">
+            <div class="max-w-7xl mx-auto">
+                <div class="text-center mb-16">
+                    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">SENTINEL V7 ARCHITECTURE</h2>
+                    <p class="text-accent tracking-[0.3em] text-xs sm:text-sm mb-6 uppercase font-bold">9-Layer Bi-Directional LSTM & Physics-Informed Neural Network (PINN)</p>
+                    <p class="text-gray-400 font-light leading-relaxed max-w-4xl mx-auto text-sm sm:text-base">
+                        The intelligence core processes a high-dimensional tensor in both forward and backward temporal directions. It fuses local topographic data with real-time API telemetry to anticipate hydraulic locks during severe monsoon events.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+                    <!-- Panel A: Neural Core Specs -->
+                    <div class="glass-container group">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="p-3 rounded-lg bg-accent/10 border border-accent/20 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="cpu" class="w-6 h-6 text-accent"></i>
+                                </div>
+                                <h3 class="text-lg font-bold tracking-widest">NEURAL CORE SPECS</h3>
+                            </div>
+                            <div class="space-y-4 font-mono text-xs sm:text-sm">
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Topology</span>
+                                    <span class="text-white">9-Layer Bi-LSTM (PyTorch)</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Inference Tensor</span>
+                                    <span class="text-accent">Shape (1, 8) FP32</span>
+                                </div>
+                                <div class="pt-2">
+                                    <span class="text-gray-500 block mb-2 uppercase text-[10px] tracking-widest">Input Vectors</span>
+                                    <div class="flex flex-wrap gap-2">
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Rainfall (mm/h)</span>
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Tidal Height (m)</span>
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Flow Rates (A/B)</span>
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Humidity</span>
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Soil Moisture</span>
+                                        <span class="px-2 py-1 bg-white/5 rounded border border-white/10 text-[10px]">Wind/Pressure</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel B: Security & Cryptography -->
+                    <div class="glass-container group">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="p-3 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="shield" class="w-6 h-6 text-green-400"></i>
+                                </div>
+                                <h3 class="text-lg font-bold tracking-widest">SECURITY & CRYPTO</h3>
+                            </div>
+                            <div class="space-y-4 font-mono text-xs sm:text-sm">
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Model State</span>
+                                    <span class="text-white">AES-GCM Encrypted (Rest)</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Memory Protection</span>
+                                    <span class="text-green-400">mlock() DEK Pinning</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Authentication</span>
+                                    <span class="text-white">1-Hour JWT Sessions</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Integrity</span>
+                                    <span class="text-white">Redis Nonce (Anti-Replay)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel C: Dataset & Fusion -->
+                    <div class="glass-container group">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="database" class="w-6 h-6 text-blue-400"></i>
+                                </div>
+                                <h3 class="text-lg font-bold tracking-widest">DATASET & FUSION</h3>
+                            </div>
+                            <div class="space-y-4 font-mono text-xs sm:text-sm">
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Base Topography</span>
+                                    <span class="text-white">216,284 Cells (100m Mesh)</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Meteorology</span>
+                                    <span class="text-white">ERA5 & Open-Meteo Hybrid</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Tidal Physics</span>
+                                    <span class="text-blue-400">Harmonic (1-Min Fidelity)</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Storage</span>
+                                    <span class="text-white">Columnar .parquet (GPU Opt)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel D: API & Backend Infrastructure -->
+                    <div class="glass-container group">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="server" class="w-6 h-6 text-purple-400"></i>
+                                </div>
+                                <h3 class="text-lg font-bold tracking-widest">API & INFRASTRUCTURE</h3>
+                            </div>
+                            <div class="space-y-4 font-mono text-xs sm:text-sm">
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Framework</span>
+                                    <span class="text-white">FastAPI + Uvicorn</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Primary Ingest</span>
+                                    <span class="text-purple-400">/api/v1/telemetry/dashboard</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Auth Route</span>
+                                    <span class="text-white">/api/v1/auth/session</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-2">
+                                    <span class="text-gray-500">Database</span>
+                                    <span class="text-white">SQLite Coastal Vault</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="threats" class="py-20 lg:py-32 px-4 sm:px-6">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 lg:mb-12 gap-4">
+                    <div>
+                        <h2 class="text-2xl lg:text-3xl font-bold tracking-tight mb-2">CRITICAL RISK MATRIX</h2>
+                        <p class="text-gray-500 tracking-[0.2em] text-xs lg:text-sm">OUTFALLS & PUMP STATIONS LIVE
+                            TELEMETRY</p>
+                    </div>
+                </div>
+
+                <div class="glass-container w-full overflow-hidden">
+                    <div class="glass-filter"></div>
+                    <div class="glass-overlay"></div>
+                    <div class="glass-specular"></div>
+                    <div class="glass-content !p-0">
+                        <div class="min-w-[600px]">
+                            <div
+                                class="grid grid-cols-12 gap-4 p-4 border-b border-white/10 text-xs text-gray-500 tracking-widest font-mono bg-black/40">
+                                <div class="col-span-1">STAT</div>
+                                <div class="col-span-5">PUMP STATION</div>
+                                <div class="col-span-4">OPERATIONAL CAPACITY</div>
+                                <div class="col-span-2 text-right">ACTUATE</div>
+                            </div>
+                            <div id="threat-list" class="divide-y divide-white/5 h-[300px] overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="map-view" class="py-20 lg:py-32 px-4 sm:px-6 bg-gradient-to-t from-transparent to-[#0a0a0c]">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 lg:mb-12 gap-4">
+                    <div>
+                        <h2 class="text-2xl lg:text-3xl font-bold tracking-tight mb-2">CITY SPATIAL PROJECTION</h2>
+                        <p class="text-gray-500 tracking-[0.2em] text-xs lg:text-sm">GEOSPATIAL THREAT MESH & STAR ARRAY
+                        </p>
+                    </div>
+                    <div class="w-full md:w-auto flex flex-wrap gap-3">
+                        <button onclick="toggleRailways()" id="btn-trigger-nodes"
+                            class="border border-accent text-accent hover:bg-accent hover:text-black px-4 py-2.5 text-xs tracking-widest transition-all duration-300 flex items-center justify-center gap-2 font-bold font-mono">
+                            <i data-lucide="train" class="w-4 h-4"></i> TOGGLE SUBURBAN RAILWAYS
+                        </button>
+                        <button id="btn-toggle-highways" onclick="toggleHighwaysLayer()" 
+                            class="border border-accent/40 text-gray-400 hover:text-accent px-4 py-2.5 text-xs font-mono tracking-widest transition-all flex items-center justify-center gap-2">
+                            <span>TOGGLE HIGHWAYS</span>
+                        </button>
+                        <button id="btn-toggle-wards" onclick="toggleWardsLayer()" 
+                            class="border border-accent/40 text-gray-400 hover:text-accent px-4 py-2.5 text-xs font-mono tracking-widest transition-all flex items-center justify-center gap-2">
+                            <span>TOGGLE WARD TILES</span>
+                        </button>
+                        <button id="btn-toggle-mangroves" onclick="toggleMangroveLayer()" 
+                            class="border border-green-500/40 text-gray-400 hover:text-green-400 px-4 py-2.5 text-xs font-mono tracking-widest transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="trees" class="w-4 h-4"></i> <span>TOGGLE MANGROVES</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    class="mb-6 flex flex-col xl:flex-row items-stretch justify-between gap-6 glass-panel px-4 sm:px-8 py-6 rounded-lg border border-white/10">
+
+                    <!-- STAR Canvas Logic -->
+                    <div
+                        class="flex-1 flex flex-col w-full xl:w-auto xl:border-r border-white/10 xl:pr-8 relative min-h-[300px]">
+                        <div class="w-full h-full" style="perspective: 1200px;"
+                            onmouseleave="toggleStarCardFace(false)">
+                            <div id="star-flip-inner" class="w-full h-full relative transition-transform duration-700"
+                                style="transform-style: preserve-3d;">
+
+                                <div class="absolute inset-0 w-full h-full flex flex-col justify-between bg-transparent"
+                                    style="backface-visibility: hidden;">
+                                    <div>
+                                        <div class="flex justify-between items-start mb-2">
+                                            <span
+                                                class="text-[10px] text-accent font-mono tracking-widest flex items-center justify-start gap-2 uppercase font-bold">
+                                                <i data-lucide="waves" class="w-4 h-4"></i> STAR: SEISMIC RESONANCE
+                                                EMITTER
+                                            </span>
+                                            <button type="button" onclick="toggleStarCardFace(true)"
+                                                class="text-gray-500 hover:text-accent transition-colors border border-white/10 rounded px-2 py-1 bg-black/40 text-[9px] font-mono tracking-widest flex items-center gap-1 relative z-10">
+                                                <i data-lucide="info" class="w-3 h-3"></i> MATRIX
+                                            </button>
+                                        </div>
+                                        <p class="text-[9px] text-gray-400 font-mono mb-4 leading-relaxed">Sub-Terranean
+                                            Acoustic Resonance maps deep-soil liquefaction vulnerabilities beneath
+                                            reclaimed land (e.g., Nariman Point, BKC).</p>
+
+                                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+                                            <div class="flex-1 w-full">
+                                                <div
+                                                    class="flex justify-between text-[9px] font-mono text-gray-400 mb-1">
+                                                    <span>RESONANCE FREQUENCY</span>
+                                                    <span id="star-hz-val" class="text-accent font-bold">432 Hz</span>
+                                                </div>
+                                                <input type="range" min="10" max="1000" value="432" id="star-hz"
+                                                    class="tech-slider w-full relative z-10"
+                                                    oninput="document.getElementById('star-hz-val').innerText = this.value + ' Hz'">
+                                            </div>
+                                            <button onclick="fireSTARPulse()"
+                                                class="relative z-10 w-full sm:w-auto bg-black border border-accent/50 hover:bg-accent text-accent hover:text-black px-4 py-2.5 rounded text-[10px] font-bold tracking-widest transition-all shadow-[0_0_15px_rgba(0,210,255,0.1)] hover:shadow-[0_0_20px_rgba(0,210,255,0.5)] whitespace-nowrap flex items-center justify-center gap-2">
+                                                <i data-lucide="rss" class="w-3 h-3"></i> EMIT PULSE
+                                            </button>
+                                        </div>
+
+                                        <div
+                                            class="w-full h-10 bg-[#050505] rounded border border-white/10 relative overflow-hidden shadow-inner">
+                                            <div id="star-emitter-ring"
+                                                class="absolute inset-0 border border-accent/0 rounded transition-all duration-300 pointer-events-none">
+                                            </div>
+                                            <canvas id="star-canvas" class="w-full h-full opacity-80"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="absolute inset-0 w-full h-full flex flex-col justify-start bg-black/95 glass-panel border border-accent/30 rounded-lg p-5"
+                                    style="backface-visibility: hidden; transform: rotateX(-180deg);">
+                                    <div class="flex justify-between items-start mb-4 border-b border-white/10 pb-3">
+                                        <span
+                                            class="text-[10px] text-accent font-mono tracking-widest flex items-center gap-2 uppercase font-bold">
+                                            <i data-lucide="book-open" class="w-4 h-4"></i> STAR MATRIX
+                                        </span>
+                                    </div>
+                                    <div class="space-y-4 text-[9px] font-mono text-gray-300">
+                                        <p>LIQUEFACTION RISKS IN RECLAIMED ZONES. Nariman Point and BKC show increased
+                                            sheer stress under severe hydraulic loading.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Compass Block -->
+                    <div
+                        class="flex flex-col sm:flex-row items-center gap-6 sm:gap-10 justify-center xl:justify-end w-full xl:w-auto pt-6 xl:pt-0 border-t xl:border-t-0 border-white/10">
+                        <div
+                            class="bg-black/40 p-4 sm:p-6 rounded-xl border border-white/5 flex flex-col sm:flex-row items-center gap-8 shadow-inner">
+                            <div class="flex flex-col items-center gap-4">
+                                <span
+                                    class="text-[10px] text-gray-500 font-mono tracking-widest flex items-center justify-center gap-2 whitespace-nowrap uppercase font-bold">
+                                    <i data-lucide="navigation-2" class="w-3 h-3 text-accent"></i> 360° Heading
+                                </span>
+                                <div class="flex items-center gap-4">
+                                    <div
+                                        class="relative w-36 h-36 rounded-full border-2 border-white/20 bg-[#050505] flex items-center justify-center shadow-[0_0_15px_rgba(0,210,255,0.05)]">
+                                        <div
+                                            class="absolute inset-2 rounded-full border border-white/10 border-dashed pointer-events-none">
+                                        </div>
+                                        <div class="w-2 h-2 rounded-full bg-accent z-10 shadow-[0_0_10px_#00d2ff]">
+                                        </div>
+                                        <div id="compass-pointer"
+                                            class="absolute w-full h-full rounded-full transition-transform duration-75 pointer-events-none"
+                                            style="transform: rotate(45deg);">
+                                            <svg class="absolute top-0 left-0 w-full h-full drop-shadow-[0_0_8px_rgba(0,210,255,0.5)]"
+                                                viewBox="0 0 100 100">
+                                                <path d="M 50 50 L 35 10 A 50 50 0 0 1 65 10 Z"
+                                                    fill="rgba(0,210,255,0.2)"></path>
+                                                <line x1="50" y1="50" x2="50" y2="4" stroke="#00d2ff" stroke-width="2.5"
+                                                    stroke-linecap="round"></line>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col min-w-[70px]">
+                                        <div
+                                            class="text-3xl font-light font-mono text-accent leading-none tracking-tighter">
+                                            ALL</div>
+                                        <div class="text-[9px] text-gray-400 font-mono mt-1 tracking-widest uppercase">
+                                            ISOLATION OFF</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leaflet Tactical Map -->
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div
+                        class="glass-panel border border-white/10 rounded-xl p-4 lg:col-span-1 h-[400px] lg:h-[600px] flex flex-col relative z-10 overflow-y-auto">
+                        <div class="flex flex-col gap-2 mb-4 border-b border-white/10 pb-4">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="cpu" class="w-5 h-5 text-accent"></i>
+                                <h3 class="text-sm font-bold tracking-widest">INFERENCE CONTROLS</h3>
+                            </div>
+                            <div id="inference-mode-badge" class="text-[9px] font-mono bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded w-fit mt-1 tracking-widest font-bold">MODE: LIVE TELEMETRY</div>
+                        </div>
+                        <div class="space-y-4 flex-1" id="inference-sliders"></div>
+                        <div class="border-t border-white/10 pt-4 mt-4 space-y-3 font-mono text-[10px] bg-black/20 p-3 rounded border border-white/5">
+                            <div class="text-green-400 font-bold tracking-widest uppercase mb-1 flex items-center gap-1">
+                                <i data-lucide="waves" class="w-3.5 h-3.5"></i> PINN WAVE ATTENUATION
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Manning's n:</span>
+                                <span id="pinn-manning-n" class="text-white font-bold">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Delta Wave Velocity:</span>
+                                <span id="pinn-delta-v" class="text-brand font-bold">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Delta Inundation Depth:</span>
+                                <span id="pinn-delta-d" class="text-accent font-bold">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="glass-panel border border-white/10 rounded-xl overflow-hidden relative h-[400px] lg:h-[600px] lg:col-span-3">
+                        <div id="tactical-map" class="w-full h-full z-0"></div>
+                        <div
+                            class="absolute bottom-4 left-4 z-[400] glass-panel bg-black/90 p-3 border border-white/10 rounded-lg backdrop-blur-md">
+                            <div
+                                class="text-[10px] text-gray-500 tracking-widest font-mono mb-2 border-b border-white/10 pb-1">
+                                THREAT SPECTRUM</div>
+                            <div class="space-y-2 text-[10px] font-mono">
+                                <div class="flex items-center gap-2"><span
+                                        class="w-2 h-2 rounded-full bg-t_nominal shadow-[0_0_8px_rgba(0,255,0,0.6)]"></span><span
+                                        class="text-gray-300">NOMINAL (0-20)</span></div>
+                                <div class="flex items-center gap-2"><span
+                                        class="w-2 h-2 rounded-full bg-t_elevated shadow-[0_0_8px_rgba(255,255,0,0.6)]"></span><span
+                                        class="text-gray-300">ELEVATED (21-40)</span></div>
+                                <div class="flex items-center gap-2"><span
+                                        class="w-2 h-2 rounded-full bg-t_high shadow-[0_0_8px_rgba(255,0,0,0.6)]"></span><span
+                                        class="text-gray-300">HIGH THREAT (61-80)</span></div>
+                                <div class="flex items-center gap-2"><span
+                                        class="w-2 h-2 rounded-full bg-t_critical shadow-[0_0_8px_rgba(128,0,128,0.8)]"></span><span
+                                        class="text-gray-300 font-bold text-t_critical">CRITICAL (81-100)</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="neural-timeline" class="py-20 lg:py-32 px-4 sm:px-6 relative z-10 overflow-hidden">
+            <!-- Background Decoration -->
+            <div
+                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-[0.03]">
+                <div class="w-full h-full bg-[radial-gradient(circle_at_center,var(--accent)_0%,transparent_70%)]">
+                </div>
+            </div>
+
+            <div class="max-w-7xl mx-auto">
+                <div
+                    class="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6 relative z-10">
+                    <div>
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-1.5 h-6 bg-accent rounded-full"></div>
+                            <h2 class="text-2xl lg:text-3xl font-bold tracking-tight uppercase">Neural Probability
+                                Timeline</h2>
+                        </div>
+                        <p class="text-gray-500 tracking-[0.4em] text-[10px] lg:text-xs uppercase">20 Landmark
+                            Time-Series Analysis · 24-Hour Horizon</p>
+                    </div>
+                    <div
+                        class="flex items-center gap-4 bg-black/40 border border-white/10 px-4 py-2 rounded-lg backdrop-blur-md">
+                        <div class="flex flex-col items-end">
+                            <span class="text-[8px] text-gray-500 uppercase tracking-widest">Temporal Resolution</span>
+                            <span class="text-[10px] font-mono text-white">60s Sync Interval</span>
+                        </div>
+                        <div class="w-[1px] h-8 bg-white/10"></div>
+                        <div class="flex flex-col">
+                            <span class="text-[8px] text-gray-500 uppercase tracking-widest">Model Confidence</span>
+                            <span class="text-[10px] font-mono text-accent font-bold">94.2% [Bi-LSTM]</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Chart Container -->
+                <div
+                    class="glass-panel border border-white/10 rounded-2xl p-6 sm:p-10 relative overflow-hidden group shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                    <div
+                        class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent/30 to-transparent">
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="w-full h-[350px] md:h-[500px] relative">
+                        <canvas id="neuralTimelineChart"></canvas>
+                    </div>
+
+                    <!-- Landmark Filters (The Legend) -->
+                    <div class="mt-12 pt-8 border-t border-white/5">
+                        <div class="flex justify-between items-center mb-6">
+                            <span
+                                class="text-[10px] font-mono text-gray-400 tracking-[0.2em] flex items-center gap-2 uppercase">
+                                <i data-lucide="map-pin" class="w-3 h-3"></i> City Hub Isolation Filters
+                            </span>
+                            <button id="btn-timeline-toggle-all" onclick="toggleAllTimelineNodes()"
+                                class="text-[9px] font-bold text-accent hover:text-white transition-colors uppercase tracking-widest">Select
+                                All</button>
+                        </div>
+                        <div id="timeline-filters" class="flex flex-wrap gap-3">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ BI-LSTM LIVE PREDICTION MAP ═══ -->
+        <section id="live-prediction" class="py-20 lg:py-32 px-4 sm:px-6">
+            <div class="max-w-7xl mx-auto">
+
+                <!-- Header -->
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-4">
+                    <div>
+                        <h2 class="text-2xl lg:text-3xl font-bold tracking-tight mb-2">BI-LSTM LIVE PREDICTION MAP</h2>
+                        <p class="text-gray-500 tracking-[0.2em] text-xs lg:text-sm">REAL-TIME FLOOD RISK POLYGONS ·
+                            30-SECOND NEURAL SYNC</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4 text-xs font-mono">
+                        <!-- Countdown Ring -->
+                        <div class="flex items-center gap-2">
+                            <svg width="36" height="36" viewBox="0 0 36 36" class="-rotate-90">
+                                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.08)"
+                                    stroke-width="3" />
+                                <circle id="pred-ring" cx="18" cy="18" r="14" fill="none" stroke="#00e5ff"
+                                    stroke-width="3" stroke-dasharray="87.96" stroke-dashoffset="0"
+                                    stroke-linecap="round" style="transition:stroke-dashoffset 1s linear" />
+                            </svg>
+                            <div>
+                                <div class="text-gray-500 text-[9px] tracking-widest">NEXT SYNC</div>
+                                <div class="text-accent font-bold"><span id="pred-countdown">30</span>s</div>
+                            </div>
+                        </div>
+                        <div class="glass-panel border border-white/10 px-3 py-2 rounded-lg">
+                            <div class="text-gray-500 text-[9px] tracking-widest">LAST SYNC</div>
+                            <div class="text-white" id="pred-last-sync">——</div>
+                        </div>
+                        <div class="glass-panel border border-white/10 px-3 py-2 rounded-lg">
+                            <div class="text-gray-500 text-[9px] tracking-widest">CITY RISK</div>
+                            <div id="pred-city-risk" class="font-bold text-accent">——</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Topology Switcher -->
+                <div class="flex flex-wrap gap-2 mb-5" id="pred-topo-bar">
+                    <button onclick="switchPredTopo('dark')" id="topo-dark"
+                        class="pred-topo-btn active-topo text-[10px] font-mono tracking-widest px-4 py-2 border rounded transition-all duration-200">&#9632;
+                        DARK COMMAND</button>
+                    <button onclick="switchPredTopo('satellite')" id="topo-satellite"
+                        class="pred-topo-btn text-[10px] font-mono tracking-widest px-4 py-2 border rounded transition-all duration-200">&#9633;
+                        SATELLITE</button>
+                    <button onclick="switchPredTopo('terrain')" id="topo-terrain"
+                        class="pred-topo-btn text-[10px] font-mono tracking-widest px-4 py-2 border rounded transition-all duration-200">&#9651;
+                        TERRAIN</button>
+                    <button onclick="switchPredTopo('street')" id="topo-street"
+                        class="pred-topo-btn text-[10px] font-mono tracking-widest px-4 py-2 border rounded transition-all duration-200">&#9632;
+                        STREET</button>
+                </div>
+
+                <!-- Map + Info Panel -->
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+                    <!-- Zone Info / Risk Panel -->
+                    <div
+                        class="glass-panel border border-white/10 rounded-xl p-4 lg:col-span-1 h-[500px] lg:h-[650px] flex flex-col gap-4 overflow-y-auto">
+
+                        <!-- Legend -->
+                        <div>
+                            <div
+                                class="text-[9px] font-mono text-gray-500 tracking-widest mb-3 border-b border-white/10 pb-2">
+                                FLOOD RISK SPECTRUM</div>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between text-[10px] font-mono">
+                                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm"
+                                            style="background:#00ffaa;box-shadow:0 0 5px #00ffaa"></span>NOMINAL</div>
+                                    <span class="text-gray-600">0–20%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-[10px] font-mono">
+                                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm"
+                                            style="background:#ffee00;box-shadow:0 0 5px #ffee00"></span>ELEVATED</div>
+                                    <span class="text-gray-600">21–40%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-[10px] font-mono">
+                                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm"
+                                            style="background:#ff9900;box-shadow:0 0 5px #ff9900"></span>MODERATE</div>
+                                    <span class="text-gray-600">41–60%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-[10px] font-mono">
+                                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm"
+                                            style="background:#ff2a2a;box-shadow:0 0 5px #ff2a2a"></span>HIGH</div>
+                                    <span class="text-gray-600">61–80%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-[10px] font-mono">
+                                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm"
+                                            style="background:#b000ff;box-shadow:0 0 5px #b000ff"></span>CRITICAL</div>
+                                    <span class="text-gray-600">81–100%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Selected Zone Details -->
+                        <div class="flex-1">
+                            <div
+                                class="text-[9px] font-mono text-gray-500 tracking-widest mb-3 border-b border-white/10 pb-2">
+                                ZONE DIAGNOSTIC</div>
+                            <div id="pred-zone-detail" class="text-[10px] font-mono text-gray-500 italic">Click any zone
+                                polygon for live diagnostics</div>
+                        </div>
+
+                        <!-- Top Risk Zones List -->
+                        <div>
+                            <div
+                                class="text-[9px] font-mono text-gray-500 tracking-widest mb-3 border-b border-white/10 pb-2">
+                                CRITICAL ZONES RANKED</div>
+                            <div id="pred-zone-list" class="space-y-1.5 text-[9px] font-mono">
+                                <div class="text-gray-600 italic">Loading…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Leaflet Prediction Map -->
+                    <div
+                        class="glass-panel border border-white/10 rounded-xl overflow-hidden lg:col-span-3 h-[500px] lg:h-[650px] relative">
+                        <div id="live-pred-map" class="w-full h-full"></div>
+                        <!-- Model Badge -->
+                        <div
+                            class="absolute top-3 left-3 z-[450] glass-panel bg-black/90 px-3 py-2 border border-purple-500/30 rounded-lg">
+                            <div class="text-[8px] font-mono text-purple-400 tracking-widest">BI-LSTM v7.2 | CONFIDENCE
+                            </div>
+                            <div id="pred-confidence" class="text-white font-bold text-sm font-mono">--.--%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- [AGENT TASK 2] ADMIN RESOURCE ANALYSIS MATRIX (REDESIGNED) -->
+        <section id="resource-matrix-section" class="relative mt-32 px-4 sm:px-6 z-10 font-mono">
+            <div class="max-w-7xl mx-auto">
+                <!-- Header / Toggle -->
+                <div
+                    class="flex items-center justify-between px-6 py-4 bg-accent/5 border border-accent/20 rounded-t-xl backdrop-blur-md">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+                        <span class="text-[10px] font-bold tracking-[0.3em] text-accent uppercase">Sentinel V7 Logistics
+                            Engine // 20-Point Tactical Matrix</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-[8px] text-gray-500 uppercase tracking-widest">
+                        <span>Latency: 24ms</span>
+                        <span class="text-green-500">Nominal Sync</span>
+                    </div>
+                </div>
+
+                <!-- Matrix Content -->
+                <div
+                    class="glass-panel border border-white/10 rounded-b-xl border-t-0 p-6 md:p-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                    <!-- Group A: Asset Deployment -->
+                    <div class="flex flex-col gap-4">
+                        <div class="flex justify-between items-center border-b border-accent/30 pb-2 mb-2">
+                            <h5 class="text-[10px] text-accent font-black tracking-[0.2em] uppercase">Group A: Assets
+                            </h5>
+                            <i data-lucide="shield" class="w-3 h-3 text-accent/50"></i>
+                        </div>
+                        <div id="matrix-group-a" class="grid gap-3"></div>
+                    </div>
+                    <!-- Group B: Infrastructure -->
+                    <div class="flex flex-col gap-4">
+                        <div class="flex justify-between items-center border-b border-blue-400/30 pb-2 mb-2">
+                            <h5 class="text-[10px] text-blue-400 font-black tracking-[0.2em] uppercase">Group B: Infra
+                            </h5>
+                            <i data-lucide="activity" class="w-3 h-3 text-blue-400/50"></i>
+                        </div>
+                        <div id="matrix-group-b" class="grid gap-3"></div>
+                    </div>
+                    <!-- Group C: Medical -->
+                    <div class="flex flex-col gap-4">
+                        <div class="flex justify-between items-center border-b border-green-400/30 pb-2 mb-2">
+                            <h5 class="text-[10px] text-green-400 font-black tracking-[0.2em] uppercase">Group C:
+                                Medical</h5>
+                            <i data-lucide="heart" class="w-3 h-3 text-green-400/50"></i>
+                        </div>
+                        <div id="matrix-group-c" class="grid gap-3"></div>
+                    </div>
+                    <!-- Group D: Neural -->
+                    <div class="flex flex-col gap-4">
+                        <div class="flex justify-between items-center border-b border-purple-400/30 pb-2 mb-2">
+                            <h5 class="text-[10px] text-purple-400 font-black tracking-[0.2em] uppercase">Group D:
+                                Neural</h5>
+                            <i data-lucide="cpu" class="w-3 h-3 text-purple-400/50"></i>
+                        </div>
+                        <div id="matrix-group-d" class="grid gap-3"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="h-32"></div> <!-- Spacer for separation -->
+
+        <!-- [AGENT TASK 3] SUBTERRANEAN SWARM & NALA MANAGEMENT SECTION -->
+        <section id="nala-management-section" class="relative mt-32 px-4 sm:px-6 z-10 font-mono">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col lg:flex-row gap-8">
+                    <!-- Nala Info Card -->
+                    <div class="w-full lg:w-1/3 glass-panel p-8 border border-accent/20 flex flex-col gap-6">
+                        <div class="flex items-center gap-4 border-b border-white/10 pb-4">
+                            <div
+                                class="w-12 h-12 bg-accent/10 border border-accent/30 rounded-lg flex items-center justify-center">
+                                <i data-lucide="waves" class="w-6 h-6 text-accent"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-white tracking-widest uppercase">Subterranean Control
+                                </h3>
+                                <p class="text-[9px] text-gray-500 uppercase tracking-widest">Nala Infrastructure &
+                                    Swarm Analytics</p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div
+                                class="flex justify-between items-center bg-black/40 p-4 rounded border border-white/5">
+                                <span class="text-[10px] text-gray-400 uppercase">Live Drain Count</span>
+                                <span class="text-white font-bold font-mono">FETCHING...</span>
+                            </div>
+                            <div
+                                class="flex justify-between items-center bg-black/40 p-4 rounded border border-white/5">
+                                <span class="text-[10px] text-gray-400 uppercase">Swarm Node Density</span>
+                                <span class="text-accent font-bold font-mono">100,000+</span>
+                            </div>
+                            <div
+                                class="p-4 bg-accent/5 border border-accent/20 rounded text-[9px] text-accent leading-relaxed italic">
+                                "Agent 1 is currently crawling Mumbai's drainage mesh via Overpass API. Agent 2 (Web
+                                Worker) is simulating subterranean pressure vectors."
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nala Live Map Card -->
+                    <div
+                        class="w-full lg:w-2/3 glass-panel border border-white/10 rounded-xl overflow-hidden relative group h-[450px]">
+                        <div class="absolute top-4 left-4 z-[500] flex gap-2">
+                            <div
+                                class="bg-black/80 backdrop-blur-md border border-accent/30 px-3 py-1 rounded text-[9px] text-accent font-bold uppercase tracking-widest">
+                                LIVE NALA MAPPING
+                            </div>
+                        </div>
+                        <div id="nala-live-map" class="w-full h-full bg-[#050508]">
+                            <!-- This map will be initialized via script or overlay the existing one -->
+                            <div class="flex items-center justify-center h-full text-gray-600 text-xs font-mono">
+                                [ AGENT 1: INITIALIZING WEBGIS RENDERER... ]
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer Terminal (NOW BELOW MATRIX) -->
+        <footer class="relative footer-matrix bg-[#050505] overflow-hidden border-t-2 border-accent/40 mt-12">
+            <div
+                class="w-full bg-accent text-black font-mono text-[10px] sm:text-xs py-1.5 overflow-hidden whitespace-nowrap border-b border-accent/50 shadow-[0_0_15px_rgba(0,210,255,0.5)]">
+                <div class="inline-block animate-marquee font-bold tracking-[0.2em]">
+                    /// SYSTEM: SENTINEL HUFP V7 // MODEL: MUMBAI BI-LSTM // ARCHITECTURE: 8-FACTOR TENSOR PROCESSING //
+                    FASTAPI SYNCED /// SYSTEM: SENTINEL HUFP V7 // MODEL: MUMBAI BI-LSTM // ARCHITECTURE: 8-FACTOR
+                    TENSOR PROCESSING // FASTAPI SYNCED ///
+                </div>
+            </div>
+
+            <div
+                class="max-w-7xl mx-auto py-16 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 relative z-10">
+                <div class="flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-3 mb-6">
+                            <div
+                                class="w-12 h-12 bg-white/5 border border-accent/50 rounded flex items-center justify-center shadow-[inset_0_0_15px_rgba(0,210,255,0.2)]">
+                                <i data-lucide="shield-alert" class="w-6 h-6 text-accent"></i>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="font-bold tracking-[0.3em] text-xl text-white">SENTINEL<span
+                                        class="text-accent">V7</span></span>
+                                <span class="text-[9px] font-mono tracking-widest text-gray-500">MUMBAI COMMAND</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-[9px] text-gray-500 tracking-widest font-mono mb-2 block">UPSTREAM SAT-LINK
+                            ACTIVITY</span>
+                        <div class="flex items-end gap-1.5 h-6">
+                            <div class="eq-bar w-1.5 bg-accent/80 rounded-t" style="animation-delay: 0.1s;"></div>
+                            <div class="eq-bar w-1.5 bg-accent/80 rounded-t" style="animation-delay: 0.4s;"></div>
+                            <div class="eq-bar w-1.5 bg-accent/80 rounded-t" style="animation-delay: 0.2s;"></div>
+                            <div class="eq-bar w-1.5 bg-accent/80 rounded-t" style="animation-delay: 0.5s;"></div>
+                            <div class="eq-bar w-1.5 bg-brand/80 rounded-t" style="animation-delay: 0.6s;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-6">
+                    <h4
+                        class="text-white font-bold tracking-widest text-xs flex items-center gap-2 border-b border-white/10 pb-2">
+                        <i data-lucide="server" class="w-4 h-4 text-green-400"></i> LIVE INFRASTRUCTURE
+                    </h4>
+                    <div class="space-y-5 flex-1">
+                        <div>
+                            <div class="flex justify-between text-[10px] font-mono mb-1">
+                                <span class="text-gray-400">NEURAL ENGINE LOAD</span>
+                                <span class="text-green-400">NOMINAL</span>
+                            </div>
+                            <div class="w-full h-1 bg-white/10 rounded overflow-hidden">
+                                <div class="w-[42%] h-full bg-green-500 shadow-[0_0_8px_#22c55e]"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col h-full">
+                    <h4
+                        class="text-white font-bold tracking-widest text-xs flex items-center gap-2 border-b border-white/10 pb-2 mb-4">
+                        <i data-lucide="terminal" class="w-4 h-4 text-gray-400"></i> NLP SITREP TERMINAL
+                    </h4>
+                    <div class="glass-container flex-1">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content h-full p-3 !bg-transparent">
+                            <div
+                                class="h-full bg-[#020202]/80 border border-white/10 rounded-lg p-3 relative shadow-[inset_0_0_20px_rgba(0,0,0,1)] overflow-hidden font-mono text-[9px] leading-relaxed text-green-500 flex flex-col justify-end min-h-[150px]">
+                                <div id="footer-terminal-content" class="flex flex-col gap-1 transition-all overflow-y-auto">
+                                    <div>> INIT KERNEL V7...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <svg style="visibility: hidden; position: absolute;" width="0" height="0" xmlns="http://www.w3.org/2000/svg" version="1.1">
+        <defs>
+            <filter id="lg-dist">
+                <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" result="noise" />
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="10" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- Tactical Overlay V3.0 -->
+    <div id="tactical-prompt-container"
+        class="fixed bottom-6 right-6 w-[340px] sm:w-[400px] z-[99999] transform translate-y-[120%] opacity-0 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+        <div
+            class="glass-panel bg-[#050508]/95 border border-accent/40 rounded-xl shadow-[0_10px_40px_rgba(0,210,255,0.15)] overflow-hidden relative group">
+            <div class="bg-accent/10 border-b border-accent/20 px-4 py-2 flex justify-between items-center relative">
+                <div
+                    class="absolute inset-0 bg-gradient-to-r from-accent/20 to-transparent w-[200%] animate-[marquee_3s_linear_infinite] opacity-50">
+                </div>
+                <div class="flex items-center gap-2 relative z-10">
+                    <i data-lucide="terminal-square" class="w-4 h-4 text-accent"></i>
+                    <span class="text-[10px] font-mono font-bold text-accent tracking-widest uppercase">Sentinel V7
+                        AI</span>
+                </div>
+                <button onclick="dismissTacticalPrompt()" class="text-gray-500 hover:text-white relative z-10"><i
+                        data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-5">
+                <div class="flex gap-3 items-start mb-4">
+                    <div class="w-2 h-2 mt-1.5 bg-accent rounded-full animate-ping shrink-0"></div>
+                    <div id="prompt-typing-text" class="text-xs font-mono text-gray-300 leading-relaxed min-h-[40px]">
+                    </div>
+                </div>
+                <div id="prompt-actions"
+                    class="flex flex-col gap-2 mt-4 opacity-0 transform translate-y-4 transition-all"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripting -->
+    <script>
+        lucide.createIcons();
+
+        // Boot Screen
+        const bootLines = ["Initializing Sentinel HUFP V7 Kernel...", "Establishing connection to FastAPI Backend...", "Loading Bi-LSTM Neural Brain... [OK]", "Connecting to PostgreSQL Vault... [OK]", "Normalizing Tensors (1,8)..."];
+        async function runBootSequence() {
+            const bootText = document.getElementById('boot-text');
+            const bootScreen = document.getElementById('boot-screen');
+            for (let line of bootLines) {
+                const p = document.createElement('p'); p.textContent = `> ${line}`; bootText.appendChild(p);
+                await new Promise(r => setTimeout(r, Math.random() * 80 + 30));
+            }
+            await initializeSecureSession();
+            await fetchTelemetry();
+            initResourceMatrix();
+            setTimeout(() => { bootScreen.style.opacity = '0'; setTimeout(() => bootScreen.style.display = 'none', 500); }, 500);
+        }
+
+        // --- ADMIN RESOURCE MATRIX LOGIC ---
+        function initResourceMatrix() {
+            const matrixData = {
+                A: [
+                    { label: "NDRF BATTALION", val: "ACTIVE: 4 / RES: 2", icon: "shield" },
+                    { label: "BMC HEAVY MACHINERY", val: "12 UNITS AT CHOKE POINTS", icon: "truck" },
+                    { label: "COAST GUARD AIRLIFT", val: "READY: 3 SORTIES", icon: "navigation" },
+                    { label: "INFLATABLE ZODIACS", val: "45 BOATS DEPLOYED", icon: "anchor" },
+                    { label: "SANDBAG LOGISTICS", val: "800 TONS / 1200 REQ", icon: "archive" }
+                ],
+                B: [
+                    { label: "SWD MEGA-PUMP DIESEL", val: "FUEL: 92%", icon: "fuel" },
+                    { label: "MITHI RIVER TENSION", val: "STRESS: 14%", icon: "activity" },
+                    { label: "SEWAGE OVERFLOW", val: "BIO-HAZARD: NOMINAL", icon: "droplets" },
+                    { label: "RAIL TRACTION POWER", val: "GRID: STABLE", icon: "zap" },
+                    { label: "TELECOM BACKBONE", val: "BATTERY: 8.5 HRS", icon: "battery" }
+                ],
+                C: [
+                    { label: "KEM/SION ICU CAP", val: "AVAIL: 14 BEDS", icon: "crosshair" },
+                    { label: "ANTI-VENOM KITS", val: "STOCK: HIGH", icon: "package" },
+                    { label: "AMBULANCE ROUTING", val: "DELAY: 4.2 MIN", icon: "map-pin" },
+                    { label: "PORTABLE GENERATORS", val: "42 UNITS ACTIVE", icon: "server" },
+                    { label: "QUARANTINE STATUS", val: "NOMINAL", icon: "users" }
+                ],
+                D: [
+                    { label: "PROCESSING LATENCY", val: "24ms", icon: "cpu" },
+                    { label: "SENSOR INTEGRITY", val: "98.8%", icon: "wifi" },
+                    { label: "EPISTEMIC UNCERTAINTY", val: "LOW (0.04)", icon: "brain" },
+                    { label: "COMPUTE BURN", val: "GPU: 62%", icon: "hard-drive" },
+                    { label: "OVERRIDE LOG", val: "AI CONTROL: 14 TIMES", icon: "terminal" }
+                ]
+            };
+
+            const renderGroup = (groupId, data) => {
+                const ht = window._lastHydrologyTensor || {};
+                const swdPct  = Math.min(100, ht.swd_blockage_pct  || 42);
+                const rainPct = Math.min(100, (ht.rainfall_mm || 28) / 1.0);
+                const tidePct = Math.min(100, ((ht.tide_level_m || 3.2) / 6.0) * 100);
+                const windPct = Math.min(100, ((ht.wind_speed_kmh || 55) / 150) * 100);
+                const barMap  = [swdPct, rainPct, tidePct, windPct, 78];
+                const container = document.getElementById(`matrix-group-${groupId.toLowerCase()}`);
+                container.innerHTML = data.map((item, idx) => { item.barPct = barMap[idx % barMap.length]; return item; }).map((item, idx) => `
+                    <div class="matrix-card glass-container transition-all">
+                        <div class="glass-filter"></div>
+                        <div class="glass-overlay"></div>
+                        <div class="glass-specular"></div>
+                        <div class="glass-content flex flex-col gap-2 !p-4">
+                            <div class="absolute top-0 left-0 w-1 h-full bg-current opacity-30"></div>
+                            <div class="flex justify-between items-start mb-1">
+                                <div class="flex flex-col">
+                                    <span class="text-[7px] text-gray-500 uppercase tracking-widest font-bold">NODE ${String(idx + 1).padStart(3, '0')}</span>
+                                    <span class="text-[9px] text-white font-black group-hover:text-accent transition-colors">${item.label}</span>
+                                </div>
+                                <i data-lucide="${item.icon}" class="w-3 h-3 text-gray-600 group-hover:text-white group-hover:rotate-12 transition-all"></i>
+                            </div>
+                            <div class="text-[11px] font-mono text-accent/90 bg-accent/5 px-2 py-1 rounded border border-accent/10 w-fit">${item.val}</div>
+                            <div class="w-full h-[3px] bg-white/5 rounded-full overflow-hidden mt-1">
+                                <div class="h-full bg-accent shadow-[0_0_8px_rgba(0,229,255,0.6)] w-[${item.barPct}%] transition-all duration-1000"></div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            };
+
+            Object.entries(matrixData).forEach(([id, data]) => renderGroup(id, data));
+            lucide.createIcons();
+
+            // Re-render matrix bars when fresh telemetry arrives
+            window._matrixRedraw = function() {
+                Object.entries(matrixData).forEach(([id, data]) => renderGroup(id, data));
+                lucide.createIcons();
+            };
+            setInterval(window._matrixRedraw, 8000);
+        }
+
+        // ─── SMOOTH 3D PARTICLE SPHERE WITH CURSOR REPEL ───────────────────────────
+        const canvas = document.getElementById('bg-canvas');
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.z = 500;
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0);
+
+        // Custom Shader — smooth round particles with HEAT BURNING GLOW
+        const vertexShader = `
+            attribute float size;
+            attribute float opacity;
+            attribute float heat;       // 0.0 = cool white, 1.0 = burning orange/red
+            varying float vOpacity;
+            varying float vHeat;
+            void main() {
+                vOpacity = opacity;
+                vHeat    = heat;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                // Heat expands particle size for a bloom effect
+                gl_PointSize = (size + heat * 4.0) * (400.0 / -mvPosition.z);
+                gl_Position  = projectionMatrix * mvPosition;
+            }
+        `;
+        const fragmentShader = `
+            varying float vOpacity;
+            varying float vHeat;
+            void main() {
+                vec2 xy = gl_PointCoord.xy - vec2(0.5);
+                float r  = dot(xy, xy);
+                if (r > 0.25) discard;
+                float alpha = (1.0 - r * 4.0) * vOpacity;
+
+                // Heat colour ramp: white -> warm-amber -> deep-orange
+                vec3 coolColor = vec3(1.0, 1.0, 1.0);           // pure white
+                vec3 warmColor = vec3(1.0, 0.55, 0.1);          // amber
+                vec3 hotColor  = vec3(1.0, 0.18, 0.02);         // ember red
+                vec3 col = mix(coolColor, warmColor, clamp(vHeat * 1.8, 0.0, 1.0));
+                col      = mix(col, hotColor,  clamp((vHeat - 0.5) * 2.0, 0.0, 1.0));
+
+                gl_FragColor = vec4(col, alpha);
+            }
+        `;
+
+        const PARTICLE_COUNT = window.innerWidth < 768 || navigator.hardwareConcurrency <= 4 ? 4000 : 12000;
+        const SPHERE_RADIUS = 220;
+        const REPEL_RADIUS = 130;
+        const REPEL_STRENGTH = 2.2;
+        const RETURN_SPEED = 0.028;
+
+        const basePositions = new Float32Array(PARTICLE_COUNT * 3);
+        const currentPositions = new Float32Array(PARTICLE_COUNT * 3);
+        const velocities = new Float32Array(PARTICLE_COUNT * 3);
+        const sizes = new Float32Array(PARTICLE_COUNT);
+        const opacities = new Float32Array(PARTICLE_COUNT);
+        const heats = new Float32Array(PARTICLE_COUNT); // per-particle heat
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = SPHERE_RADIUS * (0.85 + Math.random() * 0.15);
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+            basePositions[i * 3] = x; basePositions[i * 3 + 1] = y; basePositions[i * 3 + 2] = z;
+            currentPositions[i * 3] = x; currentPositions[i * 3 + 1] = y; currentPositions[i * 3 + 2] = z;
+            sizes[i] = Math.random() * 3.0 + 1.0;
+            opacities[i] = Math.random() * 0.6 + 0.3;
+            heats[i] = 0.0;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const posAttr = new THREE.BufferAttribute(currentPositions, 3);
+        posAttr.setUsage(THREE.DynamicDrawUsage);
+        const heatAttr = new THREE.BufferAttribute(heats, 1);
+        heatAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('position', posAttr);
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('opacity', new THREE.BufferAttribute(opacities, 1));
+        geometry.setAttribute('heat', heatAttr);
+
+        const shaderMaterial = new THREE.ShaderMaterial({
+            vertexShader, fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const particleSphere = new THREE.Points(geometry, shaderMaterial);
+        scene.add(particleSphere);
+
+        // Mouse Repel State
+        const mouse3D = new THREE.Vector3(9999, 9999, 9999); // far away initially
+        const mouseScreen = { x: -9999, y: -9999 };
+
+        window.addEventListener('mousemove', (e) => {
+            mouseScreen.x = e.clientX;
+            mouseScreen.y = e.clientY;
+            // Unproject mouse into 3D scene space (z=0 plane)
+            const ndcX = (e.clientX / window.innerWidth) * 2 - 1;
+            const ndcY = -(e.clientY / window.innerHeight) * 2 + 1;
+            mouse3D.set(ndcX, ndcY, 0.5);
+            mouse3D.unproject(camera);
+            mouse3D.sub(camera.position).normalize();
+            const dist = -camera.position.z / mouse3D.z;
+            mouse3D.copy(camera.position).addScaledVector(mouse3D, dist * 0.38);
+        });
+
+        let time = 0;
+
+        function animateSphere() {
+            requestAnimationFrame(animateSphere);
+            time += 0.0006;
+
+            particleSphere.rotation.y += 0.0008;
+            particleSphere.rotation.x += 0.0003;
+
+            const posArr = geometry.attributes.position.array;
+            const heatArr = geometry.attributes.heat.array;
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                const cx = posArr[ix], cy = posArr[iy], cz = posArr[iz];
+
+                // Project to screen
+                const pVec = new THREE.Vector3(cx, cy, cz);
+                pVec.applyMatrix4(particleSphere.matrixWorld).project(camera);
+                const sx = (pVec.x + 1) / 2 * window.innerWidth;
+                const sy = (-pVec.y + 1) / 2 * window.innerHeight;
+                const sdx = sx - mouseScreen.x, sdy = sy - mouseScreen.y;
+                const sDist = Math.sqrt(sdx * sdx + sdy * sdy);
+
+                let particleHeat = 0.0;
+
+                if (sDist < REPEL_RADIUS && sDist > 0.01) {
+                    const rf = (1.0 - sDist / REPEL_RADIUS) * REPEL_STRENGTH;
+                    const dx = cx - mouse3D.x, dy = cy - mouse3D.y, dz = cz - mouse3D.z;
+                    const dl = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.001;
+                    velocities[ix] += (dx / dl) * rf;
+                    velocities[iy] += (dy / dl) * rf;
+                    velocities[iz] += (dz / dl) * rf;
+                    // Heat rises with proximity
+                    particleHeat = 1.0 - sDist / REPEL_RADIUS;
+                }
+
+                // Spring return
+                velocities[ix] += (basePositions[ix] - cx) * RETURN_SPEED;
+                velocities[iy] += (basePositions[iy] - cy) * RETURN_SPEED;
+                velocities[iz] += (basePositions[iz] - cz) * RETURN_SPEED;
+                velocities[ix] *= 0.87; velocities[iy] *= 0.87; velocities[iz] *= 0.87;
+                posArr[ix] += velocities[ix];
+                posArr[iy] += velocities[iy];
+                posArr[iz] += velocities[iz];
+
+                // Smoothly interpolate heat (slow cool-down)
+                heatArr[i] += (particleHeat - heatArr[i]) * 0.12;
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.heat.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animateSphere();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ─── NASA APOD: Single full-cover img (fixes tiling permanently) ─────────────
+        // NOTE: DEMO_KEY = 30 req/hr, 50 req/day. Get a free key at https://api.nasa.gov
+        // Replace 'DEMO_KEY' with your personal key to avoid rate-limit failures.
+        const NASA_API_KEY = 'DEMO_KEY'; // ← replace with your personal API key from api.nasa.gov
+        const APOD_FALLBACK = 'https://apod.nasa.gov/apod/image/2501/NGC1566_HubbleMorishita_1080.jpg';
+
+        async function fetchNASABackground() {
+            const cacheKey = 'nasa_apod_admin_v2'; // distinct key per page
+            const today = new Date().toISOString().split('T')[0];
+            const nasaImg = document.getElementById('nasa-bg');
+
+            let imgUrl = null;
+            try {
+                const cached = localStorage.getItem(cacheKey);
+                if (cached) {
+                    const d = JSON.parse(cached);
+                    if (d.date === today && d.url) imgUrl = d.url;
+                }
+                if (!imgUrl) {
+                    const res = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${NASA_API_KEY}`);
+                    const data = await res.json();
+                    if (data && data.error) throw new Error(data.error.message || 'API error');
+                    // Use hdurl/url for images; fall back to static if today is a video
+                    imgUrl = (data.media_type === 'image') ? (data.hdurl || data.url) : APOD_FALLBACK;
+                    localStorage.setItem(cacheKey, JSON.stringify({ date: today, url: imgUrl }));
+                }
+            } catch (e) {
+                console.warn('NASA APOD API failed, using fallback:', e.message);
+                imgUrl = APOD_FALLBACK;
+            }
+
+            if (imgUrl && nasaImg) {
+                // Guard against onload not firing for browser-cached images
+                nasaImg.onload = () => { nasaImg.style.opacity = '0.5'; };
+                nasaImg.src = imgUrl;
+                // If already cached by browser, onload may not fire — force it
+                if (nasaImg.complete && nasaImg.naturalWidth > 0) {
+                    nasaImg.style.opacity = '0.5';
+                }
+            }
+        }
+        fetchNASABackground();
+
+        // ════════════════════════════════════════════════════════════════════════
+        // BI-LSTM LIVE PREDICTION MAP — 30-second polling engine
+        // ════════════════════════════════════════════════════════════════════════
+        (function initPredictionMap() {
+
+            /* ── Topology tile sources ── */
+            const TOPOS = {
+                dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr: '© CartoDB' },
+                satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' },
+                terrain: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '© OpenTopoMap' },
+                street: { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attr: '© CartoDB' }
+            };
+
+            const pMap = L.map('live-pred-map', {
+                zoomControl: false, center: [19.076, 72.877], zoom: 11,
+                minZoom: 10, maxZoom: 18,
+                maxBounds: L.latLngBounds([18.870, 72.730], [19.520, 73.200]),
+                maxBoundsViscosity: 1.0
+            });
+            L.control.zoom({ position: 'bottomright' }).addTo(pMap);
+            let activeTile = L.tileLayer(TOPOS.dark.url, { subdomains: 'abcd', maxZoom: 18, attribution: TOPOS.dark.attr }).addTo(pMap);
+            let activeTopo = 'dark';
+            const rCol = s => s <= 20 ? '#00ffaa' : s <= 40 ? '#ffee00' : s <= 60 ? '#ff9900' : s <= 80 ? '#ff2a2a' : '#b000ff';
+
+            /* ── CONTINUOUS RISK TESSELLATION ENGINE ──
+             *  Covers the full Mumbai bounding box with a 0.015° (≈1.5km) grid.
+             *  Each cell risk is computed via Inverse Distance Weighting (IDW)
+             *  from 14 calibrated seed zones. No patch left unexamined.
+             * ================================================= */
+
+            // ─ Risk seed anchors (lat, lng, geoRisk 0–1)
+            const RISK_SEEDS = [
+                { lat:18.9154, lng:72.8241, risk:0.28, name:'Colaba / Nariman Pt',   ward:'A Ward'    },
+                { lat:18.9545, lng:72.8400, risk:0.35, name:'Fort / CST Area',        ward:'B Ward'    },
+                { lat:18.9900, lng:72.8150, risk:0.46, name:'Worli / Prabhadevi',     ward:'G-S Ward'  },
+                { lat:19.0100, lng:72.8400, risk:0.54, name:'Lower Parel / Dadar',    ward:'E-F Ward'  },
+                { lat:19.0490, lng:72.8465, risk:0.76, name:'Dharavi / Mahim',        ward:'HW Ward'   },
+                { lat:19.0500, lng:72.8850, risk:0.88, name:'Sion / Kurla',           ward:'F-L Ward'  },
+                { lat:19.0695, lng:72.8235, risk:0.54, name:'Bandra / Khar',          ward:'HW Ward'   },
+                { lat:19.1200, lng:72.8375, risk:0.78, name:'Andheri / Vile Parle',   ward:'K Ward'    },
+                { lat:19.0450, lng:72.9150, risk:0.71, name:'Chembur / Govandi',      ward:'M-W Ward'  },
+                { lat:19.0100, lng:72.9500, risk:0.83, name:'Mankhurd / Trombay',     ward:'M-E Ward'  },
+                { lat:19.1850, lng:72.8350, risk:0.64, name:'Goregaon / Malad',       ward:'P Ward'    },
+                { lat:19.2550, lng:72.8500, risk:0.50, name:'Borivali / Dahisar',     ward:'R Ward'    },
+                { lat:19.2050, lng:72.9900, risk:0.46, name:'Thane City',             ward:'Thane MC'  },
+                { lat:19.0700, lng:73.0200, risk:0.40, name:'Vashi / Nerul CBD',      ward:'NMMC'      }
+            ];
+
+            // ─ IDW interpolation (power=2)
+            function _idwRisk(lat, lng) {
+                let wSum = 0, rSum = 0;
+                for (const s of RISK_SEEDS) {
+                    const d2 = (lat - s.lat)**2 + (lng - s.lng)**2;
+                    if (d2 < 1e-8) return s.risk;
+                    const w = 1 / d2;
+                    wSum += w; rSum += w * s.risk;
+                }
+                return rSum / wSum;
+            }
+
+            // ─ Find nearest named zone for popup label
+            function _nearestSeed(lat, lng) {
+                let best = RISK_SEEDS[0], bd = Infinity;
+                for (const s of RISK_SEEDS) {
+                    const d = (lat - s.lat)**2 + (lng - s.lng)**2;
+                    if (d < bd) { bd = d; best = s; }
+                }
+                return best;
+            }
+
+            // ─ Build tessellated grid
+            const CELL = 0.015; // ~1.5 km
+            const LAT0 = 18.870, LAT1 = 19.520;
+            const LNG0 = 72.730, LNG1 = 73.200;
+
+            const _gridCells = []; // { poly, baseRisk, cLat, cLng }
+            window._gridCells = _gridCells;
+            const _gridLayer  = L.layerGroup().addTo(pMap);
+            // Isolated overlay for live high-density backend stream
+            window.adminHeatGroup = L.layerGroup().addTo(pMap);
+
+            (function buildGrid() {
+                for (let la = LAT0; la < LAT1 - 0.001; la = +(la + CELL).toFixed(4)) {
+                    for (let ln = LNG0; ln < LNG1 - 0.001; ln = +(ln + CELL).toFixed(4)) {
+                        const cLat = la + CELL / 2, cLng = ln + CELL / 2;
+                        const baseRisk = _idwRisk(cLat, cLng);
+                        const rPct    = baseRisk * 100;
+                        const col     = rCol(rPct);
+                        const nearest = _nearestSeed(cLat, cLng);
+
+                        const poly = L.polygon(
+                            [[la, ln],[la, ln+CELL],[la+CELL, ln+CELL],[la+CELL, ln]],
+                            { color: col, fillColor: col, fillOpacity: 0.38,
+                              weight: 0.25, opacity: 0.55, interactive: true }
+                        ).addTo(_gridLayer);
+
+                        // ─ Clickable popup ─
+                        poly._sentinelMeta = { baseRisk, cLat, cLng, nearest };
+                        poly.on('click', function () {
+                            const m   = this._sentinelMeta;
+                            const cur = m.liveRisk !== undefined ? m.liveRisk : m.baseRisk * 100;
+                            const col = rCol(cur);
+
+                            let clr = '';
+                            if (cur <= 40) clr = 'Clear for all vehicles.';
+                            else if (cur <= 60) clr = 'CAUTION: Two-wheelers and low sedans risk stalling.';
+                            else if (cur <= 80) clr = 'HAZARD: Standing water up to 1.5 ft. Heavy SUVs only.';
+                            else clr = 'IMPASSABLE: Severe flooding. Pedestrian wading unsafe.';
+
+                            this.bindPopup(`
+                                <div style="background:#050508;color:#fff;font-family:'JetBrains Mono',monospace;
+                                            padding:12px;border-radius:8px;min-width:190px;
+                                            border:1px solid ${col}44">
+                                    <div style="color:${col};font-size:10px;font-weight:bold;
+                                                letter-spacing:.12em;border-bottom:1px solid ${col}33;
+                                                padding-bottom:6px;margin-bottom:8px">
+                                        ${m.nearest.name}
+                                    </div>
+                                    <div style="color:#6b7280;font-size:8px;margin-bottom:6px">${m.nearest.ward}</div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                                        <span style="color:#9ca3af">FLOOD RISK</span>
+                                        <span style="color:${col};font-weight:bold">${cur.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                                        <span style="color:#9ca3af">STATUS</span>
+                                        <span style="color:${col}">${rLbl(cur)}</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                                        <span style="color:#9ca3af">GEO VULN.</span>
+                                        <span style="color:#fff">${(m.baseRisk*100).toFixed(0)}%</span>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,.05);border-radius:4px;
+                                                overflow:hidden;height:3px;margin-bottom:8px">
+                                        <div style="width:${cur}%;height:100%;background:${col};
+                                                    transition:width .6s ease"></div>
+                                    </div>
+                                    <div style="color:#6b7280;font-size:8px;border-top:1px solid rgba(255,255,255,.06);
+                                                padding-top:6px;line-height:1.5">${clr}</div>
+                                </div>`, { className:'sentinel-grid-popup', maxWidth:220 }
+                            ).openPopup();
+
+                            // Also push to sidebar detail panel
+                            showZoneDetail(m.nearest, cur);
+                        });
+                        poly.on('mouseover', function () {
+                            this.setStyle({ fillOpacity: 0.65, weight: 0.8 });
+                        });
+                        poly.on('mouseout', function () {
+                            this.setStyle({ fillOpacity: 0.38, weight: 0.25 });
+                        });
+
+                        _gridCells.push({ poly, baseRisk, cLat, cLng });
+                    }
+                }
+            })();
+
+            /* ── Zone detail sidebar panel ── */
+            function showZoneDetail(z, risk) {
+                const col = rCol(risk);
+                document.getElementById('pred-zone-detail').innerHTML = `
+                    <div style="border-left:3px solid ${col};padding-left:10px;margin-bottom:10px">
+                        <div style="color:${col};font-weight:bold;font-size:11px;letter-spacing:0.1em">${z.name}</div>
+                        <div style="color:#6b7280;font-size:9px">${z.ward}</div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex justify-between"><span style="color:#9ca3af">FLOOD RISK</span><span style="color:${col};font-weight:bold">${risk.toFixed(1)}%</span></div>
+                        <div class="flex justify-between"><span style="color:#9ca3af">STATUS</span><span style="color:${col}">${rLbl(risk)}</span></div>
+                        <div class="flex justify-between"><span style="color:#9ca3af">GEO VULN.</span><span style="color:#fff">${(typeof z.risk === 'number' ? z.risk : z.geoRisk*100 || risk).toFixed(0)}%</span></div>
+                        <div class="flex justify-between"><span style="color:#9ca3af">MODEL</span><span style="color:#a855f7">Bi-LSTM v7.2</span></div>
+                        <div style="margin-top:8px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;height:4px">
+                            <div style="width:${risk}%;height:100%;background:${col};transition:width 0.8s ease"></div>
+                        </div>
+                    </div>`;
+            }
+
+            /* ── updateZones: in-place setStyle (no layer rebuild) ── */
+            function updateZones(baseRiskPct) {
+                _gridCells.forEach(cell => {
+                    const blended = Math.min(100, (cell.baseRisk * 0.60 + (baseRiskPct / 100) * 0.40) * 100);
+                    cell.poly.setStyle({ color: rCol(blended), fillColor: rCol(blended) });
+                    cell.poly._sentinelMeta.liveRisk = blended;
+                });
+
+                // Ranked sidebar from named seeds
+                const seedRisks = RISK_SEEDS.map(s => ({
+                    name: s.name, ward: s.ward,
+                    risk: Math.min(100, (s.risk * 0.60 + (baseRiskPct / 100) * 0.40) * 100),
+                    col: rCol(Math.min(100, (s.risk * 0.60 + (baseRiskPct / 100) * 0.40) * 100))
+                })).sort((a, b) => b.risk - a.risk);
+
+                const listEl = document.getElementById('pred-zone-list');
+                if (listEl) listEl.innerHTML = seedRisks.slice(0, 8).map(s =>
+                    `<div class="flex justify-between items-center py-1 border-b border-white/5">
+                        <div><div style="color:${s.col}" class="font-bold">${s.name}</div><div class="text-gray-600 text-[8px]">${s.ward}</div></div>
+                        <div style="color:${s.col}" class="font-bold text-[11px]">${s.risk.toFixed(0)}%</div>
+                    </div>`).join('');
+
+                const avg = seedRisks.reduce((a, b) => a + b.risk, 0) / seedRisks.length;
+                const cityEl = document.getElementById('pred-city-risk');
+                if (cityEl) { cityEl.textContent = avg.toFixed(1) + '%'; cityEl.style.color = rCol(avg); }
+            }
+
+            /* ── Topology switcher ── */
+            window.switchPredTopo = function (key) {
+                if (key === activeTopo) return;
+                pMap.removeLayer(activeTile);
+                activeTile = L.tileLayer(TOPOS[key].url, { subdomains: 'abcd', maxZoom: 18, attribution: TOPOS[key].attr }).addTo(pMap);
+                activeTile.bringToBack();
+                activeTopo = key;
+                document.querySelectorAll('.pred-topo-btn').forEach(b => b.classList.remove('active-topo'));
+                document.getElementById('topo-' + key)?.classList.add('active-topo');
+            };
+
+            /* ── 30-second polling engine ── */
+            const POLL_MS = 30000;
+            let secsLeft = 30;
+            const ringEl = document.getElementById('pred-ring');
+            const countdownEl = document.getElementById('pred-countdown');
+            const lastSyncEl = document.getElementById('pred-last-sync');
+            const confEl = document.getElementById('pred-confidence');
+            const CIRCUMF = 2 * Math.PI * 14; // 87.96
+
+            async function pollBackend() {
+                try {
+                    const res = await fetch(window.SENTINEL_API_BASE + '/api/v1/telemetry/live');
+                    const data = await res.json();
+                    const risk = (data.hydraulic_lock_probability || 0) * 100;
+                    updateZones(risk);
+                    if (lastSyncEl) lastSyncEl.textContent = new Date().toLocaleTimeString();
+                    if (confEl) confEl.textContent = (data.xai ? 94.2 : 88).toFixed(1) + '%';
+                } catch (e) {
+                    updateZones(35);
+                    if (lastSyncEl) lastSyncEl.textContent = 'OFFLINE';
+                }
+
+                // ── High-density live grid stream (async, non-blocking) ──
+                try {
+                    const gr = await fetch(window.SENTINEL_API_BASE + '/api/v1/telemetry/high-density-grid');
+                    const payload = await gr.json();
+                    if (Array.isArray(payload.grid_points) && payload.grid_points.length) {
+                        const points = payload.grid_points.map(p => [p.lat, p.lng, p.intensity]);
+                        window.adminHeatGroup.clearLayers();
+                        L.heatLayer(points, {
+                            radius: 25, blur: 20, max: 1.0,
+                            gradient: { 0.2:'#00ffaa', 0.4:'#ffee00', 0.6:'#ff9900', 0.8:'#ff2a2a', 1.0:'#b000ff' }
+                        }).addTo(window.adminHeatGroup);
+                    }
+                } catch (_) {
+                    console.warn('[SENTINEL] high-density-grid stream unavailable — IDW grid active.');
+                }
+
+                secsLeft = 30;
+            }
+
+            function tickCountdown() {
+                if (secsLeft <= 0) { pollBackend(); }
+                secsLeft--;
+                if (countdownEl) countdownEl.textContent = Math.max(0, secsLeft);
+                if (ringEl) {
+                    const pct = secsLeft / 30;
+                    const offset = CIRCUMF * (1 - pct);
+                    ringEl.style.strokeDashoffset = offset;
+                    ringEl.style.stroke = secsLeft > 10 ? '#00e5ff' : secsLeft > 5 ? '#ffee00' : '#ff2a2a';
+                }
+            }
+
+            // Grid already built synchronously above — kick off polling immediately
+            updateZones(35);
+            pollBackend();
+            setInterval(tickCountdown, 1000);
+
+        })();
+
+        // Map Setup
+        // ─── Greater Mumbai strict bounds lock ─────────────────────────────────
+        const MUMBAI_BOUNDS = L.latLngBounds([18.870, 72.730], [19.520, 73.200]);
+        const MUMBAI_CENTER = [19.0760, 72.8777];
+        const MUMBAI_ZOOM = 11;
+        const MUMBAI_MIN_ZOOM = 10;
+        const MUMBAI_MAX_ZOOM = 18;
+
+        const tMap = L.map('tactical-map', {
+            zoomControl: false,
+            center: MUMBAI_CENTER,
+            zoom: MUMBAI_ZOOM,
+            minZoom: MUMBAI_MIN_ZOOM,
+            maxZoom: MUMBAI_MAX_ZOOM,
+            maxBounds: MUMBAI_BOUNDS,
+            maxBoundsViscosity: 1.0          // hard wall — cannot pan outside
+        });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            minZoom: MUMBAI_MIN_ZOOM,
+            maxZoom: MUMBAI_MAX_ZOOM
+        }).addTo(tMap);
+        let markers = {};
+        // Tactical map live heat overlay
+        window.adminTacticalHeatGroup = L.layerGroup().addTo(tMap);
+        window.highwayLayerGroup = L.layerGroup();
+        window.wardLayerGroup = L.layerGroup();
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // MUMBAI SUBURBAN RAILWAY WATERLOGGING MONITOR
+        // ═══════════════════════════════════════════════════════════════════════
+        const RAILWAY_LINES = {
+            western: {
+                name: 'Western Line', shortCode: 'WR',
+                baseColor: '#3b82f6',   // blue idle
+                stations: [
+                    { n: 'Churchgate', lat: 18.9351, lng: 72.8263, geoRisk: 0.25 },
+                    { n: 'Marine Lines', lat: 18.9434, lng: 72.8237, geoRisk: 0.25 },
+                    { n: 'Charni Road', lat: 18.9521, lng: 72.8191, geoRisk: 0.28 },
+                    { n: 'Grant Road', lat: 18.9614, lng: 72.8152, geoRisk: 0.32 },
+                    { n: 'Mumbai Central', lat: 18.9696, lng: 72.8193, geoRisk: 0.38 },
+                    { n: 'Mahalaxmi', lat: 18.9802, lng: 72.8148, geoRisk: 0.42 },
+                    { n: 'Lower Parel', lat: 18.9889, lng: 72.8159, geoRisk: 0.48 },
+                    { n: 'Elphinstone Rd', lat: 18.9965, lng: 72.8174, geoRisk: 0.52 },
+                    { n: 'Dadar', lat: 19.0178, lng: 72.8437, geoRisk: 0.56 },
+                    { n: 'Matunga Road', lat: 19.0275, lng: 72.8438, geoRisk: 0.50 },
+                    { n: 'Mahim', lat: 19.0395, lng: 72.8397, geoRisk: 0.60 },
+                    { n: 'Bandra', lat: 19.0541, lng: 72.8361, geoRisk: 0.52 },
+                    { n: 'Khar Road', lat: 19.0694, lng: 72.8329, geoRisk: 0.55 },
+                    { n: 'Santacruz', lat: 19.0822, lng: 72.8396, geoRisk: 0.58 },
+                    { n: 'Vile Parle', lat: 19.0969, lng: 72.8474, geoRisk: 0.62 },
+                    { n: 'Andheri', lat: 19.1197, lng: 72.8467, geoRisk: 0.80 },
+                    { n: 'Jogeshwari', lat: 19.1358, lng: 72.8500, geoRisk: 0.68 },
+                    { n: 'Goregaon', lat: 19.1578, lng: 72.8477, geoRisk: 0.62 },
+                    { n: 'Malad', lat: 19.1862, lng: 72.8479, geoRisk: 0.65 },
+                    { n: 'Kandivali', lat: 19.2054, lng: 72.8476, geoRisk: 0.58 },
+                    { n: 'Borivali', lat: 19.2310, lng: 72.8560, geoRisk: 0.52 },
+                    { n: 'Dahisar', lat: 19.2502, lng: 72.8571, geoRisk: 0.48 },
+                    { n: 'Mira Road', lat: 19.2807, lng: 72.8697, geoRisk: 0.44 },
+                    { n: 'Virar', lat: 19.4568, lng: 72.7953, geoRisk: 0.38 }
+                ]
+            },
+            central: {
+                name: 'Central Line', shortCode: 'CR',
+                baseColor: '#f97316',   // orange idle
+                stations: [
+                    { n: 'CSMT', lat: 18.9399, lng: 72.8355, geoRisk: 0.32 },
+                    { n: 'Masjid', lat: 18.9459, lng: 72.8376, geoRisk: 0.36 },
+                    { n: 'Sandhurst Road', lat: 18.9518, lng: 72.8385, geoRisk: 0.38 },
+                    { n: 'Byculla', lat: 18.9719, lng: 72.8387, geoRisk: 0.42 },
+                    { n: 'Currey Road', lat: 18.9881, lng: 72.8323, geoRisk: 0.46 },
+                    { n: 'Parel', lat: 18.9970, lng: 72.8352, geoRisk: 0.50 },
+                    { n: 'Dadar (CR)', lat: 19.0180, lng: 72.8440, geoRisk: 0.55 },
+                    { n: 'Matunga', lat: 19.0290, lng: 72.8475, geoRisk: 0.52 },
+                    { n: 'Sion', lat: 19.0434, lng: 72.8586, geoRisk: 0.68 },
+                    { n: 'Kurla', lat: 19.0659, lng: 72.8784, geoRisk: 0.88 },
+                    { n: 'Vidyavihar', lat: 19.0782, lng: 72.8896, geoRisk: 0.72 },
+                    { n: 'Ghatkopar', lat: 19.0864, lng: 72.9069, geoRisk: 0.74 },
+                    { n: 'Vikhroli', lat: 19.1059, lng: 72.9284, geoRisk: 0.62 },
+                    { n: 'Kanjurmarg', lat: 19.1186, lng: 72.9434, geoRisk: 0.58 },
+                    { n: 'Bhandup', lat: 19.1440, lng: 72.9425, geoRisk: 0.56 },
+                    { n: 'Mulund', lat: 19.1740, lng: 72.9611, geoRisk: 0.50 },
+                    { n: 'Thane', lat: 19.1853, lng: 72.9741, geoRisk: 0.48 }
+                ]
+            },
+            harbour: {
+                name: 'Harbour Line', shortCode: 'HR',
+                baseColor: '#a855f7',   // purple idle
+                stations: [
+                    { n: 'CSMT (HR)', lat: 18.9399, lng: 72.8358, geoRisk: 0.32 },
+                    { n: 'Dockyard Road', lat: 18.9549, lng: 72.8440, geoRisk: 0.38 },
+                    { n: 'Reay Road', lat: 18.9587, lng: 72.8450, geoRisk: 0.40 },
+                    { n: 'Cotton Green', lat: 18.9616, lng: 72.8489, geoRisk: 0.44 },
+                    { n: 'Sewri', lat: 18.9707, lng: 72.8528, geoRisk: 0.50 },
+                    { n: 'Wadala Road', lat: 18.9863, lng: 72.8600, geoRisk: 0.55 },
+                    { n: 'Chunabhatti', lat: 19.0135, lng: 72.8701, geoRisk: 0.78 },
+                    { n: 'Kurla (HR)', lat: 19.0659, lng: 72.8787, geoRisk: 0.88 },
+                    { n: 'Tilak Nagar', lat: 19.0736, lng: 72.8902, geoRisk: 0.70 },
+                    { n: 'Chembur', lat: 19.0570, lng: 72.8990, geoRisk: 0.72 },
+                    { n: 'Govandi', lat: 19.0436, lng: 72.9105, geoRisk: 0.68 },
+                    { n: 'Mankhurd', lat: 19.0274, lng: 72.9282, geoRisk: 0.82 },
+                    { n: 'Vashi', lat: 19.0756, lng: 72.9975, geoRisk: 0.45 },
+                    { n: 'Nerul', lat: 19.0257, lng: 73.0171, geoRisk: 0.38 },
+                    { n: 'Belapur', lat: 19.0144, lng: 73.0425, geoRisk: 0.35 },
+                    { n: 'Panvel', lat: 19.0632, lng: 73.1136, geoRisk: 0.30 }
+                ]
+            }
+        };
+
+        // Risk colour ramp
+        function railRiskColor(score) {
+            if (score <= 20) return '#00ffaa';  // nominal
+            if (score <= 40) return '#ffee00';  // elevated
+            if (score <= 60) return '#ff9900';  // moderate
+            if (score <= 80) return '#ff2a2a';  // high
+            return '#b000ff';                    // critical
+        }
+        function railRiskLabel(score) {
+            if (score <= 20) return 'NOMINAL';
+            if (score <= 40) return 'ELEVATED';
+            if (score <= 60) return 'MODERATE';
+            if (score <= 80) return 'HIGH';
+            return 'CRITICAL';
+        }
+
+        // Store rendered layer handles so we can update in-place
+        const _railLayers = {};
+        let _railVisible = false;
+        let _lastBaseRisk = 0;
+
+        function initRailwayMonitor() {
+            Object.entries(RAILWAY_LINES).forEach(([key, line]) => {
+                const group = L.layerGroup();
+                const stationMarkers = [];
+                const segmentLines = [];
+
+                // Draw segments + stations
+                const stations = line.stations;
+                for (let i = 0; i < stations.length; i++) {
+                    const s = stations[i];
+                    const risk = s.geoRisk * 100;
+                    const col = railRiskColor(risk);
+
+                    // Segment line to next station
+                    if (i < stations.length - 1) {
+                        const seg = L.polyline(
+                            [[s.lat, s.lng], [stations[i + 1].lat, stations[i + 1].lng]],
+                            { color: col, weight: 4, opacity: 0.85, lineJoin: 'round' }
+                        ).addTo(group);
+                        segmentLines.push(seg);
+                    }
+
+                    // Station marker
+                    const dot = L.circleMarker([s.lat, s.lng], {
+                        radius: risk > 70 ? 7 : 5,
+                        color: col, fillColor: col, fillOpacity: 0.9, weight: 1.5
+                    }).bindPopup(`
+                        <div style="background:#050508;color:#fff;font-family:'JetBrains Mono',monospace;padding:10px;border-radius:8px;min-width:180px">
+                            <div style="color:${col};font-size:10px;font-weight:bold;letter-spacing:0.15em;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:5px">
+                                ${line.shortCode} · ${s.n}
+                            </div>
+                            <div style="font-size:9px;color:#9ca3af;margin-bottom:3px">WATERLOG RISK</div>
+                            <div style="font-size:18px;font-weight:bold;color:${col};margin-bottom:4px">${risk.toFixed(0)}<span style="font-size:11px">%</span></div>
+                            <div style="font-size:9px;letter-spacing:0.1em;color:${col};border:1px solid ${col}33;padding:2px 6px;display:inline-block;border-radius:3px">${railRiskLabel(risk)}</div>
+                        </div>
+                    `, { className: 'rail-popup' }).addTo(group);
+                    stationMarkers.push(dot);
+                }
+
+                _railLayers[key] = { group, stationMarkers, segmentLines };
+            });
+        }
+        initRailwayMonitor();
+
+        // Update all risk colours from live telemetry
+        function updateRailwayMonitor(baseRiskPct) {
+            _lastBaseRisk = baseRiskPct;
+            Object.entries(RAILWAY_LINES).forEach(([key, line]) => {
+                const { stationMarkers, segmentLines } = _railLayers[key];
+                const stations = line.stations;
+                let mIdx = 0, sIdx = 0;
+
+                for (let i = 0; i < stations.length; i++) {
+                    const s = stations[i];
+                    // Blend: 60% from geo vulnerability, 40% from live backend risk
+                    const blendedRisk = Math.min(100, (s.geoRisk * 0.60 + (baseRiskPct / 100) * 0.40) * 100);
+                    const col = railRiskColor(blendedRisk);
+
+                    // Update marker
+                    if (stationMarkers[mIdx]) {
+                        stationMarkers[mIdx].setStyle({ color: col, fillColor: col });
+                        stationMarkers[mIdx].setPopupContent(`
+                            <div style="background:#050508;color:#fff;font-family:'JetBrains Mono',monospace;padding:10px;border-radius:8px;min-width:180px">
+                                <div style="color:${col};font-size:10px;font-weight:bold;letter-spacing:0.15em;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:5px">
+                                    ${line.shortCode} · ${s.n}
+                                </div>
+                                <div style="font-size:9px;color:#9ca3af;margin-bottom:3px">WATERLOG RISK (LIVE)</div>
+                                <div style="font-size:18px;font-weight:bold;color:${col};margin-bottom:4px">${blendedRisk.toFixed(0)}<span style="font-size:11px">%</span></div>
+                                <div style="font-size:9px;letter-spacing:0.1em;color:${col};border:1px solid ${col}33;padding:2px 6px;display:inline-block;border-radius:3px">${railRiskLabel(blendedRisk)}</div>
+                                <div style="font-size:8px;color:#6b7280;margin-top:6px">Backend sync: ${new Date().toLocaleTimeString()}</div>
+                            </div>
+                        `);
+                    }
+                    mIdx++;
+
+                    // Update segment color
+                    if (i < stations.length - 1 && segmentLines[sIdx]) {
+                        segmentLines[sIdx].setStyle({ color: col });
+                        sIdx++;
+                    }
+                }
+            });
+        }
+
+        let showRail = false;
+        function toggleRailways() {
+            showRail = !showRail;
+            const btn = document.getElementById('btn-trigger-nodes');
+            Object.values(_railLayers).forEach(({ group }) => {
+                showRail ? group.addTo(tMap) : tMap.removeLayer(group);
+            });
+            if (btn) {
+                btn.classList.toggle('bg-accent', showRail);
+                btn.classList.toggle('text-black', showRail);
+            }
+            if (showRail) updateRailwayMonitor(_lastBaseRisk);
+        }
+
+        let showHighways = false;
+        window.toggleHighwaysLayer = function() {
+            showHighways = !showHighways;
+            const btn = document.getElementById('btn-toggle-highways');
+            if (showHighways) {
+                // Draw major expressways
+                const highwayCoords = [
+                    // Western Express Highway (WEH)
+                    [[19.0180, 72.8433], [19.0600, 72.8490], [19.1155, 72.8550], [19.1630, 72.8610], [19.2300, 72.8580], [19.2800, 72.8750]],
+                    // Eastern Express Highway (EEH)
+                    [[19.0160, 72.8590], [19.0620, 72.8870], [19.1250, 72.9150], [19.1750, 72.9460], [19.2200, 72.9750]],
+                    // Sion-Panvel Expressway
+                    [[19.0490, 72.8820], [19.0620, 72.9230], [19.0480, 72.9630], [19.0350, 73.0100]],
+                    // Coastal Road / Marine Drive / Bandra-Worli Sea Link
+                    [[18.9250, 72.8220], [18.9550, 72.8120], [18.9950, 72.7950], [19.0220, 72.8150], [19.0450, 72.8180]]
+                ];
+                
+                window.highwayLayerGroup.clearLayers();
+                highwayCoords.forEach(line => {
+                    L.polyline(line, {
+                        color: '#00e5ff',
+                        weight: 2.5,
+                        opacity: 0.7,
+                        dashArray: '4, 4'
+                    }).addTo(window.highwayLayerGroup);
+                });
+                
+                window.highwayLayerGroup.addTo(tMap);
+                if (btn) {
+                    btn.classList.add('bg-accent', 'text-black');
+                    btn.classList.remove('text-gray-400');
+                }
+            } else {
+                tMap.removeLayer(window.highwayLayerGroup);
+                if (btn) {
+                    btn.classList.remove('bg-accent', 'text-black');
+                    btn.classList.add('text-gray-400');
+                }
+            }
+        };
+
+        let showWards = false;
+        window.toggleWardsLayer = function() {
+            showWards = !showWards;
+            const btn = document.getElementById('btn-toggle-wards');
+            if (showWards) {
+                // Draw some generic grid boundaries representing city Wards
+                const wardBoxes = [
+                    // Colaba / Fort (Ward A/B)
+                    [[18.8950, 72.8050], [18.9650, 72.8600]],
+                    // Worli / Lower Parel (Ward G/E)
+                    [[18.9650, 72.7900], [19.0250, 72.8550]],
+                    // Bandra / Kurla (Ward H/L)
+                    [[19.0250, 72.8100], [19.0850, 72.8950]],
+                    // Andheri (Ward K)
+                    [[19.0850, 72.8000], [19.1650, 72.8800]],
+                    // Chembur / Ghatkopar (Ward M/N)
+                    [[19.0550, 72.8950], [19.1450, 72.9700]],
+                    // Borivali (Ward R)
+                    [[19.1650, 72.8100], [19.2850, 72.9000]]
+                ];
+                
+                window.wardLayerGroup.clearLayers();
+                wardBoxes.forEach(bounds => {
+                    L.rectangle(bounds, {
+                        color: '#ffffff',
+                        weight: 1,
+                        fillOpacity: 0.05,
+                        fillColor: '#0057ff'
+                    }).addTo(window.wardLayerGroup);
+                });
+                
+                window.wardLayerGroup.addTo(tMap);
+                if (btn) {
+                    btn.classList.add('bg-accent', 'text-black');
+                    btn.classList.remove('text-gray-400');
+                }
+            } else {
+                tMap.removeLayer(window.wardLayerGroup);
+                if (btn) {
+                    btn.classList.remove('bg-accent', 'text-black');
+                    btn.classList.add('text-gray-400');
+                }
+            }
+        };
+
+        let mangroveLayer = null;
+        window.toggleMangroveLayer = function() {
+            const btn = document.getElementById('btn-toggle-mangroves');
+            if (!mangroveLayer) {
+                fetch('/HUFP_mumbai/data/mumbai_mangroves_boundary.geojson')
+                    .then(res => res.json())
+                    .then(data => {
+                        mangroveLayer = L.geoJSON(data, {
+                            style: function(feature) {
+                                const density = feature.properties.density;
+                                const color = density > 80 ? '#22c55e' : density > 40 ? '#f97316' : '#ef4444';
+                                return { color: color, fillColor: color, fillOpacity: 0.4, weight: 1.5 };
+                            },
+                            onEachFeature: function(feature, layer) {
+                                layer.bindPopup(`
+                                    <div style="background:#050508;color:#fff;font-family:'JetBrains Mono',monospace;padding:10px;border-radius:8px;min-width:180px">
+                                        <div style="color:#22c55e;font-size:10px;font-weight:bold;letter-spacing:0.15em;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:5px">
+                                            ${feature.properties.name}
+                                        </div>
+                                        <div style="font-size:9px;color:#9ca3af;margin-bottom:3px">CANOPY DENSITY</div>
+                                        <div style="font-size:18px;font-weight:bold;color:#22c55e;margin-bottom:4px">${feature.properties.density}<span style="font-size:11px">%</span></div>
+                                        <div style="font-size:9px;color:#9ca3af;margin-bottom:3px">SHADOW WIDTH</div>
+                                        <div style="font-size:11px;font-weight:bold;color:#fff;margin-bottom:4px">${feature.properties.width_m} m</div>
+                                        <div style="font-size:9px;letter-spacing:0.1em;color:#fff;border:1px solid rgba(255,255,255,0.2);padding:2px 6px;display:inline-block;border-radius:3px">${feature.properties.status}</div>
+                                    </div>
+                                `, { className: 'mangrove-popup' });
+                            }
+                        });
+                        mangroveLayer.addTo(tMap);
+                        btn.classList.add('bg-green-500', 'text-black');
+                        btn.classList.remove('text-gray-400');
+                    });
+            } else {
+                if (tMap.hasLayer(mangroveLayer)) {
+                    tMap.removeLayer(mangroveLayer);
+                    btn.classList.remove('bg-green-500', 'text-black');
+                    btn.classList.add('text-gray-400');
+                } else {
+                    mangroveLayer.addTo(tMap);
+                    btn.classList.add('bg-green-500', 'text-black');
+                    btn.classList.remove('text-gray-400');
+                }
+            }
+        };
+
+        window.runTacticalInferenceSimulation = function() {
+            // 1. Shift the UI state identifier to inform the operator a simulation is underway
+            const badge = document.getElementById('inference-mode-badge');
+            if (badge) {
+                badge.innerText = "MODE: SCENARIO INFERENCE SIMULATION";
+                badge.className = "text-[9px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-1 rounded w-fit mt-1 tracking-widest font-bold animate-pulse";
+            }
+
+            // 2. Extract active configuration value scales from the interactive input fields
+            const rain = parseFloat(document.getElementById('slider-rain')?.value || 0);
+            const tide = parseFloat(document.getElementById('slider-tide')?.value || 0);
+            const swd  = parseFloat(document.getElementById('slider-swd')?.value || 0);
+            const wind = parseFloat(document.getElementById('slider-wind')?.value || 0);
+            const impermeability = parseFloat(document.getElementById('slider-impermeability')?.value || 0);
+            const coast = parseFloat(document.getElementById('slider-coast')?.value || 0);
+            const mangrove = parseFloat(document.getElementById('slider-mangrove')?.value || 100);
+
+            // Update value text readouts next to headers instantly
+            if (document.getElementById('label-rain')) document.getElementById('label-rain').innerText = rain + " mm/h";
+            if (document.getElementById('label-tide')) document.getElementById('label-tide').innerText = tide + " m";
+            if (document.getElementById('label-swd')) document.getElementById('label-swd').innerText = swd + " %";
+            if (document.getElementById('label-wind')) document.getElementById('label-wind').innerText = wind + " km/h";
+            if (document.getElementById('label-impermeability')) document.getElementById('label-impermeability').innerText = impermeability + " Idx";
+            if (document.getElementById('label-coast')) document.getElementById('label-coast').innerText = coast + " km";
+            if (document.getElementById('label-mangrove')) document.getElementById('label-mangrove').innerText = mangrove + " %";
+
+            // 3. Compute client-side composite risk vectors over the geographic map space
+            // Scale risk weights proportionally relative to the altered simulation adjustments
+            const simulationIntensityMultiplier = (rain / 100) * 0.4 + (tide / 6.0) * 0.3 + (swd / 100) * 0.2 + (1.0 - mangrove / 100) * 0.1;
+
+            // 4. Regenerate canvas data grid arrays in real-time across your grid cells
+            if (window._gridCells && window._gridCells.length) {
+                window._gridCells.forEach(cell => {
+                    const simulatedRiskValue = Math.min(100, Math.max(5, (cell.baseRisk * 0.5 + simulationIntensityMultiplier * 0.5) * 100));
+                    cell.poly.setStyle({
+                        color: railRiskColor(simulatedRiskValue),
+                        fillColor: railRiskColor(simulatedRiskValue)
+                    });
+                    if (!cell.poly._sentinelMeta) {
+                        cell.poly._sentinelMeta = {};
+                    }
+                    cell.poly._sentinelMeta.liveRisk = simulatedRiskValue;
+                });
+            }
+
+            // 5. Debounce backend simulation request to FastAPI endpoint via activeWorker
+            clearTimeout(window.simTimeout);
+            window.simTimeout = setTimeout(() => {
+                if (window.activeWorker) {
+                    window.activeWorker.postMessage({
+                        type: 'SIMULATION_REQUEST',
+                        mangrove_density: mangrove,
+                        tide_height: tide,
+                        rainfall_rate: rain,
+                        api_base: window.SENTINEL_API_BASE
+                    });
+                }
+            }, 300);
+        };
+
+        // Neural Probability Timeline Chart
+        const landmarks = [
+            "Gateway of India", "Marine Drive", "Juhu Beach", "Bandra-Worli Sea Link",
+            "Siddhivinayak Temple", "Haji Ali Dargah", "CSMT", "Dharavi", "Worli Fort",
+            "Powai Lake", "Sanjay Gandhi NP", "Colaba Causeway", "Elephanta Caves",
+            "Girgaon Chowpatty", "Nariman Point", "Kurla", "Dadar", "Chembur",
+            "Andheri East", "Borivali"
+        ];
+
+        const timelineColors = [
+            '#00d2ff', '#f97316', '#a855f7', '#22c55e', '#ef4444',
+            '#eab308', '#ec4899', '#06b6d4', '#8b5cf6', '#10b981',
+            '#f43f5e', '#6366f1', '#fb923c', '#4ade80', '#2dd4bf',
+            '#818cf8', '#c084fc', '#f472b6', '#fb7185', '#38bdf8'
+        ];
+
+        const ctxT = document.getElementById('neuralTimelineChart').getContext('2d');
+        const labels24h = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+
+        // Deterministic 24-h seed: sinusoidal monsoon diurnal pattern modulated per landmark index
+        function _timelineSeed(landmarkIdx) {
+            const base = 25 + (landmarkIdx % 5) * 6; // 25–49 base per landmark
+            return Array.from({ length: 24 }, (_, h) => {
+                const diurnal = Math.sin((h - 6) * Math.PI / 12) * 18; // peaks ~18:00
+                const offset  = (landmarkIdx * 7) % 15;                  // deterministic shift
+                return Math.round(Math.max(5, Math.min(99, base + diurnal + offset)));
+            });
+        }
+        const timelineDatasets = landmarks.map((name, i) => ({
+            label: name,
+            data: _timelineSeed(i),
+            borderColor: timelineColors[i],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+            hidden: i > 4
+        }));
+
+        const neuralTimelineChart = new Chart(ctxT, {
+            type: 'line',
+            data: {
+                labels: labels24h,
+                datasets: timelineDatasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 9, family: 'JetBrains Mono' } } },
+                    y: {
+                        min: 0, max: 100,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 9, family: 'JetBrains Mono' } }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // Populate Filters
+        function initTimelineFilters() {
+            const container = document.getElementById('timeline-filters');
+            container.innerHTML = landmarks.map((name, i) => `
+                <button onclick="toggleTimelineDataset(${i})" id="filter-node-${i}" class="flex items-center gap-2 bg-white/5 border ${i <= 4 ? 'border-accent/40 bg-accent/5' : 'border-white/10'} px-3 py-1.5 rounded-md hover:bg-white/10 transition-all">
+                    <span class="w-1.5 h-1.5 rounded-full" style="background: ${timelineColors[i]}"></span>
+                    <span class="text-[9px] font-mono text-gray-300 tracking-widest uppercase">${name}</span>
+                </button>
+            `).join('');
+        }
+        initTimelineFilters();
+
+        window.toggleTimelineDataset = function (index) {
+            const isHidden = neuralTimelineChart.data.datasets[index].hidden;
+            neuralTimelineChart.data.datasets[index].hidden = !isHidden;
+            neuralTimelineChart.update();
+
+            const btn = document.getElementById(`filter-node-${index}`);
+            if (isHidden) {
+                btn.classList.add('border-accent/40', 'bg-accent/5');
+            } else {
+                btn.classList.remove('border-accent/40', 'bg-accent/5');
+            }
+        };
+
+        window.toggleAllTimelineNodes = function () {
+            const btn = document.getElementById('btn-timeline-toggle-all');
+            const isSelectingAll = btn.textContent.trim().toUpperCase() === 'SELECT ALL';
+            const show = isSelectingAll;
+
+            neuralTimelineChart.data.datasets.forEach((d, i) => {
+                d.hidden = !show;
+                const filterBtn = document.getElementById(`filter-node-${i}`);
+                if (show) filterBtn.classList.add('border-accent/40', 'bg-accent/5');
+                else filterBtn.classList.remove('border-accent/40', 'bg-accent/5');
+            });
+
+            neuralTimelineChart.update();
+            btn.textContent = show ? 'DESELECT ALL' : 'SELECT ALL';
+        };
+
+        // Live Sync — derives new point from live hydraulic_lock_probability
+        async function syncTimelineData() {
+            let lockBase = 35;
+            try {
+                const r = await fetch(window.SENTINEL_API_BASE + '/api/v1/telemetry/live');
+                const d = await r.json();
+                lockBase = Math.round((d.hydraulic_lock_probability || 0.35) * 100);
+            } catch (_) { /* offline — keep last lockBase */ }
+            console.log(`[NEURAL] Syncing timeline at lock_prob=${lockBase}%`);
+            neuralTimelineChart.data.datasets.forEach((ds, i) => {
+                ds.data.shift();
+                // Each landmark gets a deterministic offset from the live lock probability
+                const jitter = ((i * 13) % 20) - 10; // deterministic ±10
+                ds.data.push(Math.max(5, Math.min(99, lockBase + jitter)));
+            });
+            neuralTimelineChart.update('none');
+        }
+        setInterval(syncTimelineData, 60000);
+
+        const FEATURES = [
+            { id: 'rain', name: 'RAINFALL', unit: 'mm/h', max: 100, default: 0 },
+            { id: 'tide', name: 'TIDAL HEIGHT', unit: 'm', max: 6.0, default: 0 },
+            { id: 'swd', name: 'SWD BLOCKAGE', unit: '%', max: 100, default: 0 },
+            { id: 'wind', name: 'WIND SHEAR', unit: 'km/h', max: 150, default: 0 },
+            { id: 'impermeability', name: 'IMPERMEABILITY', unit: 'Idx', max: 1.0, default: 0 },
+            { id: 'coast', name: 'DIST TO COAST', unit: 'km', max: 10.0, default: 0 },
+            { id: 'mangrove', name: 'MANGROVE CANOPY', unit: '%', max: 100, default: 100 }
+        ];
+
+        function populateSliders() {
+            const container = document.getElementById('inference-sliders');
+            container.innerHTML = '';
+            FEATURES.forEach((f) => {
+                const html = `
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-end text-[10px] font-mono">
+                            <span class="text-gray-400 tracking-widest">${f.name}</span>
+                            <span id="label-${f.id}" class="text-accent font-bold">${f.default} ${f.unit}</span>
+                        </div>
+                        <input type="range" id="slider-${f.id}" min="0" max="${f.max}" step="${f.max > 10 ? 1 : 0.1}" value="${f.default}" class="tech-slider w-full" oninput="runTacticalInferenceSimulation()">
+                    </div>`;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+        }
+        populateSliders();
+
+        // STAR Array
+        function toggleStarCardFace(showBack) {
+            const inner = document.getElementById('star-flip-inner');
+            inner.style.transform = showBack ? 'rotateX(180deg)' : 'rotateX(0deg)';
+        }
+        function fireSTARPulse() {
+            const ring = document.getElementById('star-emitter-ring');
+            ring.classList.add('star-emitting');
+            setTimeout(() => ring.classList.remove('star-emitting'), 1500);
+        }
+        const sCtx = document.getElementById('star-canvas').getContext('2d');
+        function drawStarWave() {
+            sCtx.clearRect(0, 0, 300, 50); sCtx.beginPath(); sCtx.moveTo(0, 25);
+            for (let i = 0; i < 300; i++) { sCtx.lineTo(i, 25 + Math.sin(i * 0.1 + Date.now() * 0.005) * 10); }
+            sCtx.strokeStyle = '#00d2ff'; sCtx.lineWidth = 1; sCtx.stroke();
+            requestAnimationFrame(drawStarWave);
+        }
+        drawStarWave();
+
+        // Tactical Prompt
+        const promptContainer = document.getElementById('tactical-prompt-container');
+        const typeTarget = document.getElementById('prompt-typing-text');
+        const actionContainer = document.getElementById('prompt-actions');
+        let typingInterval, activeLock = false;
+
+        window.triggerTacticalPrompt = function (msg, actions = []) {
+            clearInterval(typingInterval); typeTarget.innerHTML = ''; actionContainer.innerHTML = '';
+            actionContainer.classList.add('opacity-0', 'translate-y-4');
+            promptContainer.classList.remove('translate-y-[120%]', 'opacity-0'); promptContainer.classList.add('translate-y-0', 'opacity-100');
+            typeTarget.classList.add('typing-cursor');
+            let i = 0;
+            typingInterval = setInterval(() => {
+                typeTarget.innerHTML = msg.substring(0, i++);
+                if (i > msg.length) {
+                    clearInterval(typingInterval); typeTarget.classList.remove('typing-cursor');
+                    actions.forEach(a => {
+                        const btn = document.createElement('button');
+                        btn.className = `w-full bg-accent/10 border border-accent/50 text-accent py-2 px-3 rounded text-[10px] font-mono font-bold hover:bg-accent hover:text-black flex justify-between`;
+                        btn.innerHTML = `<span>${a.label}</span><i data-lucide="chevron-right" class="w-3 h-3"></i>`;
+                        btn.onclick = () => { a.onClick(); promptContainer.classList.add('translate-y-[120%]'); };
+                        actionContainer.appendChild(btn);
+                    });
+                    lucide.createIcons(); setTimeout(() => actionContainer.classList.remove('opacity-0', 'translate-y-4'), 50);
+                }
+            }, 15);
+        };
+        window.dismissTacticalPrompt = () => promptContainer.classList.add('translate-y-[120%]');
+
+        // Fetch
+        async function fetchTelemetry() {
+            try {
+                const res = await fetch(window.SENTINEL_API_BASE + '/api/v1/telemetry/dashboard');
+                const data = await res.json();
+
+                document.getElementById('stat-hl').innerText = (data.hydraulic_lock_probability * 100).toFixed(0);
+                document.getElementById('stat-tide').innerText = data.tide_level_m || (data.hydrology_tensor && data.hydrology_tensor.tide_level_m) || '--';
+                document.getElementById('stat-wind').innerText = (data.hydrology_tensor && data.hydrology_tensor.wind_speed_kmh) ? data.hydrology_tensor.wind_speed_kmh + ' km/h' : '--';
+
+                // Grid features
+                const fg = document.getElementById('feature-grid');
+                fg.innerHTML = '';
+                const fNames = ['RAINFALL', 'TIDAL HEIGHT', 'SWD BLOCKAGE', 'WIND SHEAR'];
+                const fVals = [data.hydrology_tensor.rainfall_mm, data.hydrology_tensor.tide_level_m, data.hydrology_tensor.swd_blockage_pct, data.hydrology_tensor.wind_speed_kmh];
+                const fUnits = ['mm', 'm', '%', 'km/h'];
+                const fMaxs = [100, 6, 100, 150];
+                fNames.forEach((n, i) => {
+                    fg.innerHTML += `<div class="flip-card flip-left w-full h-[120px] group"><div class="flip-card-inner"><div class="flip-card-front glass-panel p-4 rounded-lg border border-white/5 relative overflow-hidden transition-all group-hover:border-white/20"><div class="text-[10px] text-gray-500 tracking-widest font-mono mb-1">${n}</div><div class="text-xl font-light mb-3">${fVals[i]} <span class="text-xs text-gray-500">${fUnits[i]}</span></div><div class="w-full h-1 bg-black/50 rounded-full overflow-hidden"><div class="h-full bg-accent data-bar" style="width: ${(fVals[i] / fMaxs[i]) * 100}%"></div></div></div><div class="flip-card-back glass-panel p-4 rounded-lg border border-accent/30 bg-black/90 flex flex-col justify-center"><div class="text-[10px] text-accent tracking-widest font-mono mb-2 border-b border-white/10 pb-1 uppercase">SENSOR METADATA</div><div class="text-[9px] font-mono text-gray-300">Live API Sync</div></div></div></div>`;
+                });
+
+                // XAI (REPLACED BY TIMELINE)
+
+                // Threats (Pumps)
+                const tl = document.getElementById('threat-list');
+                tl.innerHTML = '';
+                data.pumps.forEach(p => {
+                    const c = p.status === 'Overloaded' ? 'text-red-500' : 'text-green-400';
+                    tl.innerHTML += `<div class="grid grid-cols-12 gap-4 p-4 items-center text-xs font-mono group hover:bg-white/5 transition-colors cursor-pointer"><div class="col-span-1"><div class="w-2 h-2 rounded-full ${p.status === 'Overloaded' ? 'bg-red-500 animate-pulse' : 'bg-green-500'}"></div></div><div class="col-span-5 text-gray-300">${p.name}</div><div class="col-span-4 ${c}">${p.capacity}% [${p.status}]</div><div class="col-span-2 text-right"><button class="border border-white/10 px-2 py-1 rounded text-[9px] hover:bg-accent hover:text-black hover:border-accent">OVR</button></div></div>`;
+                });
+
+                // Map Nodes + railway risk update
+                const baseRisk = (data.hydraulic_lock_probability || 0) * 100;
+                updateRailwayMonitor(baseRisk);
+
+                railwayLayer && railwayLayer.clearLayers && railwayLayer.clearLayers();
+                data.nodes.forEach(n => {
+                    if (n.type === 'railway') L.circleMarker([n.lat, n.lng], { radius: 4, color: n.status === 'Red' ? '#e53935' : '#fff' }).bindPopup(n.id).addTo(railwayLayer);
+                    else {
+                        const col = n.status === 'Red' ? '#e53935' : '#00d2ff';
+                        if (!markers[n.id]) markers[n.id] = L.circleMarker([n.lat, n.lng], { radius: 5, color: col, fillColor: col, fillOpacity: 0.6 }).addTo(tMap);
+                        else markers[n.id].setStyle({ color: col, fillColor: col });
+                        if (n.status === 'Red' && !activeLock) {
+                            activeLock = true; triggerTacticalPrompt(`Hydraulic Lock imminent at ${n.id}. Close Outfall Gates?`, [{ label: "CLOSE", primary: true, onClick: () => { activeLock = false; } }]);
+                        }
+                    }
+                });
+
+                const term = document.getElementById('footer-terminal-content');
+                if (term && Array.isArray(data.sitreps)) {
+                    term.innerHTML = data.sitreps.map(s => `<div class="terminal-line ${s.includes('WARNING') ? 'text-red-500' : ''}">> ${s}</div>`).join('');
+                    term.scrollTop = term.scrollHeight;
+                }
+
+                // Sliders
+                document.getElementById('label-rain').innerText = data.hydrology_tensor.rainfall_mm;
+                document.getElementById('label-swd').innerText = data.hydrology_tensor.swd_blockage_pct;
+                document.getElementById('label-tide').innerText = data.hydrology_tensor.tide_level_m;
+                document.getElementById('label-wind').innerText = data.hydrology_tensor.wind_speed_kmh;
+
+                // Master Vault Records — live indexed record count
+                if (data.total_indexed_records !== undefined) {
+                    const vaultEl = document.getElementById('stat-vault-records');
+                    if (vaultEl) vaultEl.textContent = (data.total_indexed_records / 1000000).toFixed(1) + 'M';
+                }
+
+                // Stash hydrology tensor for resource matrix bar redraws
+                window._lastHydrologyTensor = data.hydrology_tensor;
+                if (typeof window._matrixRedraw === 'function') window._matrixRedraw();
+
+            } catch (e) { console.warn("API Offline"); }
+        }
+
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 50) {
+                nav.style.background = 'rgba(0, 0, 0, 0.6)';
+                nav.style.backdropFilter = 'blur(24px)';
+                nav.style.webkitBackdropFilter = 'blur(24px)';
+                nav.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
+            } else {
+                nav.style.background = 'transparent';
+                nav.style.backdropFilter = 'none';
+                nav.style.webkitBackdropFilter = 'none';
+                nav.style.borderBottom = '1px solid transparent';
+            }
+        });
+
+        runBootSequence();
+        setInterval(fetchTelemetry, 6000);
+    </script>
+    <!-- [AGENT TASK 3] SUBTERRANEAN SWARM INTELLIGENCE INTEGRATION -->
+    <script src="nala_manager.js"></script>
+</body>
+
+</html>

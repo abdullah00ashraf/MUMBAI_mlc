@@ -1,0 +1,22 @@
+[
+  {
+    "water_body": "Tulsi_Lake",
+    "overflow_elevation_meters": 139.17,
+    "cascade_target": "Vihar_Lake",
+    "threat_level": "Warning",
+    "notes": "When Tulsi overflows, it drains directly into Vihar Lake, accelerating Vihar's fill rate."
+  },
+  {
+    "water_body": "Vihar_Lake",
+    "overflow_elevation_meters": 80.12,
+    "cascade_target": "Mithi_River",
+    "threat_level": "Critical",
+    "notes": "When Vihar overflows, the Mithi River instantly exceeds its baseline volume. S1 MUST veto any 'Transit Clear' predictions for Wards L and H/E (Kurla/BKC) if this elevation is breached."
+  },
+  {
+    "water_body": "Powai_Lake",
+    "overflow_elevation_meters": 58.5,
+    "cascade_target": "Mithi_River",
+    "threat_level": "High"
+  }
+]

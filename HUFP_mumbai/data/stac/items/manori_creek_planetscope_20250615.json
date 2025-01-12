@@ -1,0 +1,57 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "manori_creek_planetscope_20250615",
+  "properties": {
+    "datetime": "2025-06-15T10:32:00Z",
+    "platform": "planetscope",
+    "constellation": "planetscope",
+    "cloud_cover": 1.0
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [72.80, 19.20],
+        [72.85, 19.20],
+        [72.85, 19.25],
+        [72.80, 19.25],
+        [72.80, 19.20]
+      ]
+    ]
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "../catalog.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "blue": {
+      "href": "../geotiffs/manori_planetscope_blue.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "green": {
+      "href": "../geotiffs/manori_planetscope_green.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "red": {
+      "href": "../geotiffs/manori_planetscope_red.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "nir": {
+      "href": "../geotiffs/manori_planetscope_nir.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "swir": {
+      "href": "../geotiffs/manori_planetscope_swir.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    }
+  }
+}

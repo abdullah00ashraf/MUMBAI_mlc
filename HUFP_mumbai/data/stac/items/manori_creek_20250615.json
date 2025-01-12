@@ -1,0 +1,57 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "manori_creek_20250615",
+  "properties": {
+    "datetime": "2025-06-15T10:30:00Z",
+    "platform": "sentinel-2",
+    "constellation": "sentinel-2",
+    "cloud_cover": 2.5
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [72.80, 19.20],
+        [72.85, 19.20],
+        [72.85, 19.25],
+        [72.80, 19.25],
+        [72.80, 19.20]
+      ]
+    ]
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "../catalog.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "blue": {
+      "href": "../geotiffs/manori_blue.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "green": {
+      "href": "../geotiffs/manori_green.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "red": {
+      "href": "../geotiffs/manori_red.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "nir": {
+      "href": "../geotiffs/manori_nir.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    },
+    "swir": {
+      "href": "../geotiffs/manori_swir.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    }
+  }
+}

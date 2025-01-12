@@ -1,0 +1,24 @@
+{
+  "environmental_constants": {
+    "evaporation_recovery_rate_mm_per_hr": 2.5,
+    "max_soil_retention_capacity_mm": 150.0
+  },
+  "antecedent_moisture_multipliers": [
+    {
+      "condition": "AMC_I_Dry",
+      "prior_5_day_rainfall_mm": "< 35",
+      "runoff_coefficient_modifier": 0.8
+    },
+    {
+      "condition": "AMC_II_Normal",
+      "prior_5_day_rainfall_mm": "35 to 50",
+      "runoff_coefficient_modifier": 1.0
+    },
+    {
+      "condition": "AMC_III_Saturated",
+      "prior_5_day_rainfall_mm": "> 50",
+      "runoff_coefficient_modifier": 1.45,
+      "notes": "Ground is fully saturated. Dirt now behaves exactly like asphalt. S3 must treat all green zones as 100% runoff areas."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+[
+  {
+    "sensor_model": "TB3_Tipping_Bucket_Rain_Gauge",
+    "manufacturer": "Hydrological_Services",
+    "max_physical_rate_of_change_mm_per_hr": 700.0,
+    "accuracy_degradation_threshold_mm_per_hr": 250.0,
+    "resolution_mm": 0.2,
+    "muck_degradation_vulnerability": "High",
+    "notes": "Accuracy drops from +/-2% to +/-3% over 250mm/hr. If telemetry reports > 700mm/hr, sensor is compromised."
+  },
+  {
+    "sensor_model": "Ultrasonic_Water_Level",
+    "manufacturer": "Standard_Industrial",
+    "max_physical_rate_of_change_m_per_min": 0.6,
+    "resolution_m": 0.001,
+    "muck_degradation_vulnerability": "Medium",
+    "notes": "Water in Mumbai's urban catchments cannot physically rise faster than 0.6m per 60 seconds. Spikes beyond this indicate signal bouncing off floating solid debris (muck) rather than the water surface."
+  }
+]

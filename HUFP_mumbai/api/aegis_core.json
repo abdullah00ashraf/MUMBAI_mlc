@@ -1,0 +1,25 @@
+{
+  "module_id": "AEGIS_SIDEKICK_V7",
+  "parent_project": "SENTINEL_MUMBAI_HUB",
+  "operational_mode": "ISOLATED_COGNITIVE_AUDITOR",
+  "system_logic": {
+    "data_foundation": "IMMUTABLE_MONGODB_DOCUMENT_STORE",
+    "architecture": "SIX_TIER_INDEPENDENT_SUITE",
+    "validation_engine": "JUDGE_JURY_LAYER",
+    "persona_matrix": [
+      "LEAD_HYDROLOGIST",
+      "SYSTEM_ARCHITECT",
+      "HUMANITARIAN_ENGINEER",
+      "RESOURCE_STRATEGIST"
+    ]
+  },
+  "standard_protocols": {
+    "S1_PROCESSING": "UNIFIED_SCHEMA_CONVERSION_ONLY",
+    "S2_ISOLATION": "ZERO_CROSS_TALK_MANDATE",
+    "S3_AUTHENTICATION": "REASONING_PATH_VERIFICATION_100",
+    "S4_HUMAN_MODEL": "EMPATHETIC_RESOURCE_ALLOCATION",
+    "S5_GAP_DETECTION": "PROACTIVE_RFIs_ON_UNCERTAINTY",
+    "S6_ECOSYSTEM": "SELF_HEALING_ADAPTIVE_LOOP"
+  },
+  "execution_priority": "INTEGRITY_OVER_SPEED"
+}

@@ -1,0 +1,62 @@
+# ==========================================
+# Sentinel V7: Mumbai Coastal Operations
+# Git Ignore Configuration
+# ==========================================
+
+# Environments & Local Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Vercel Deployment Artifacts
+.vercel/
+
+# Python & Caching
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Databases & Local SQLite Vaults
+*.db
+*.sqlite
+*.sqlite3
+HUFP_mumbai/data/mumbai_coastal_vault.db
+HUFP_mumbai/aegis_audit.db
+clients_intelligence_db.sqlite
+
+# Massive Geospatial Data & Parquet Files (>28 GB)
+*.parquet
+HUFP_mumbai/data/processed/
+HUFP_mumbai/data/processed/*
+HUFP_mumbai/data/raw/tide/*.csv
+
+# Heavy Satellite Imagery & GeoTIFFs (>100 MB)
+HUFP_mumbai/data/raw/landcover/*.tif
+*.tif.aux.xml
+
+# Pretrained Neural Model Checkpoints (>100 MB)
+*.pt
+*.pth
+HUFP_mumbai/models/*.pt
+HUFP_mumbai/src/models/*.pt
+
+# External Reference PDFs & Large Documents (>50 MB)
+*.pdf
+HUFP_mumbai/aegis_auditor/data/raw/*.pdf
+
+# Node & Package Managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini

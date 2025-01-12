@@ -1,0 +1,115 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "m1",
+        "name": "Charkop Creek Mangroves",
+        "density": 85.0,
+        "width_m": 25.0,
+        "status": "Healthy"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [72.818, 19.205],
+            [72.826, 19.205],
+            [72.826, 19.212],
+            [72.818, 19.212],
+            [72.818, 19.205]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "m2",
+        "name": "Manori Creek Mangroves",
+        "density": 45.0,
+        "width_m": 15.0,
+        "status": "Degraded"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [72.790, 19.220],
+            [72.802, 19.220],
+            [72.802, 19.230],
+            [72.790, 19.230],
+            [72.790, 19.220]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "m3",
+        "name": "Bhayandar Creek Replanted Site",
+        "density": 92.0,
+        "width_m": 45.0,
+        "status": "Healthy"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [72.850, 19.290],
+            [72.860, 19.290],
+            [72.860, 19.300],
+            [72.850, 19.300],
+            [72.850, 19.290]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "m4",
+        "name": "Diva-Mumbra Shadow Zone",
+        "density": 22.0,
+        "width_m": 12.0,
+        "status": "Anomalous"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [73.020, 19.180],
+            [73.030, 19.180],
+            [73.030, 19.190],
+            [73.020, 19.190],
+            [73.020, 19.180]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "m5",
+        "name": "Thane-Rabodi Estuary Fringes",
+        "density": 58.0,
+        "width_m": 28.0,
+        "status": "Degraded"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [72.970, 19.210],
+            [72.980, 19.210],
+            [72.980, 19.220],
+            [72.970, 19.220],
+            [72.970, 19.210]
+          ]
+        ]
+      }
+    }
+  ]
+}

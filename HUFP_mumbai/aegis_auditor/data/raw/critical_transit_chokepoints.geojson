@@ -1,0 +1,57 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Milan Subway",
+        "type": "Railway_Underpass",
+        "flood_threshold_mm_hr": 25.0,
+        "ward": "H/W"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [72.8428, 19.0883]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Andheri Subway",
+        "type": "Railway_Underpass",
+        "flood_threshold_mm_hr": 25.0,
+        "ward": "K/E"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [72.8458, 19.1200]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hindmata Junction",
+        "type": "Topographical_Saucer",
+        "flood_threshold_mm_hr": 35.0,
+        "ward": "F/S"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [72.8402, 19.0153]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dahisar Subway",
+        "type": "Railway_Underpass",
+        "flood_threshold_mm_hr": 30.0,
+        "ward": "R/N"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [72.8622, 19.2501]
+      }
+    }
+  ]
+}

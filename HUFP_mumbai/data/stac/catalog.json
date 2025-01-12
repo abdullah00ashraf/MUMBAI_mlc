@@ -1,0 +1,28 @@
+{
+  "type": "Catalog",
+  "id": "mumbai-mangroves-catalog",
+  "stac_version": "1.0.0",
+  "description": "Localized STAC Catalog serving real historical GeoTIFFs for Mumbai Mangrove monitoring.",
+  "links": [
+    {
+      "rel": "root",
+      "href": "./catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "self",
+      "href": "./catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "item",
+      "href": "./items/manori_creek_20250615.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "item",
+      "href": "./items/manori_creek_planetscope_20250615.json",
+      "type": "application/json"
+    }
+  ]
+}
